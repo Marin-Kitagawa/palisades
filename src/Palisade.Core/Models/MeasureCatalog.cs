@@ -30,6 +30,13 @@ public static class MeasureCatalog
     private const string AdobeVersions = "DC,2020,XI";
     private const string OfficeApps = "Excel,PowerPoint,Word";
     private const string DdeApps = "Excel,Word";
+    private const string DdeWordApp = "Word";
+    private const string DdeExcelApp = "Excel";
+    private const string DdeWordAndExcelApps = "Word,Excel";
+
+    // Office 2007 is in the discovery universe but upstream scopes every DDE sub-value that
+    // is not WorkbookLinkWarnings to 2010 and later.
+    private const string DdeModernVersions = "14.0,15.0,16.0";
     private const string OneNoteApp = "onenote";
     private const string CmdApps = "cmd.exe";
     private const string PowerShellApps = "powershell_ise.exe,powershell.exe";
@@ -131,7 +138,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.MicrosoftOffice,
-        Settings(OfficeSecurityPathTemplate, OfficeVersions, apps: OfficeApps),
+        Settings(officeVersions: OfficeVersions, apps: OfficeApps),
         [Dword(RegistryRoot.CurrentUser, OfficeSecurityPathTemplate, "PackagerPrompt", "2")],
         NoConstraints,
         [OfficeNotInstalled]);
@@ -147,7 +154,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.MicrosoftOffice,
-        Settings(OfficeSecurityPathTemplate, OfficeVersions, apps: OfficeApps),
+        Settings(officeVersions: OfficeVersions, apps: OfficeApps),
         [Dword(RegistryRoot.CurrentUser, OfficeSecurityPathTemplate, "VBAWarnings", "4")],
         NoConstraints,
         [OfficeNotInstalled]);
@@ -177,10 +184,16 @@ public static class MeasureCatalog
         MeasureGroup.MicrosoftOffice,
         Settings(officeVersions: OfficeVersions, apps: DdeApps),
         [
-            Dword(RegistryRoot.CurrentUser, OfficeDdeSecurityPathTemplate, "AllowDDE", "0"),
-            Dword(RegistryRoot.CurrentUser, OfficeDdeSecurityPathTemplate, "WorkbookLinkWarnings", "2"),
-            Dword(RegistryRoot.CurrentUser, OfficeOptionsPathTemplate, "DontUpdateLinks", "1"),
-            Dword(RegistryRoot.CurrentUser, OfficeWordMailPathTemplate, "DontUpdateLinks", "1"),
+            // office.go:154-166: Word only, and 2010 and later.
+            Dword(RegistryRoot.CurrentUser, OfficeDdeSecurityPathTemplate, "AllowDDE", "0", DdeWordApp, DdeModernVersions),
+            // office.go:247-255: Excel only, on the full standard version list.
+            Dword(RegistryRoot.CurrentUser, OfficeDdeSecurityPathTemplate, "WorkbookLinkWarnings", "2", DdeExcelApp),
+            // office.go:260-272: Word and Excel, 2010 and later.
+            Dword(RegistryRoot.CurrentUser, OfficeOptionsPathTemplate, "DontUpdateLinks", "1", DdeWordAndExcelApps, DdeModernVersions),
+            // office.go:273-285: Word only, 2010 and later. Outlook is reached through Word's
+            // WordMail branch, so the app in the path is still Word.
+            Dword(RegistryRoot.CurrentUser, OfficeWordMailPathTemplate, "DontUpdateLinks", "1", DdeWordApp, DdeModernVersions),
+            // office.go:286-292: a fixed Office 2007 path with no version or app expansion.
             Dword(RegistryRoot.CurrentUser, OfficeWord2007Path, "fNoCalclinksOnopen_90_1", "1"),
         ],
         [new MeasureConstraint(OfficeMacrosId, "Both measures are policy values in the same Office version branch, so macros are restored first and the DDE mitigations afterwards, which keeps a partly expanded version branch from reading as a complete restore.")],
@@ -195,7 +208,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.Adobe,
-        Settings(AcrobatJsPrefsPathTemplate, adobeVersions: AdobeVersions),
+        Settings(adobeVersions: AdobeVersions),
         [Dword(RegistryRoot.CurrentUser, AcrobatJsPrefsPathTemplate, "bEnableJS", "0")],
         NoConstraints,
         [AdobeNotInstalled]);
@@ -209,7 +222,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.Adobe,
-        Settings(AcrobatOriginalsPathTemplate, adobeVersions: AdobeVersions),
+        Settings(adobeVersions: AdobeVersions),
         [
             Dword(RegistryRoot.CurrentUser, AcrobatOriginalsPathTemplate, "bAllowOpenFile", "0"),
             Dword(RegistryRoot.CurrentUser, AcrobatOriginalsPathTemplate, "bSecureOpenFile", "1"),
@@ -226,7 +239,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.Adobe,
-        Settings(AcrobatPrivilegedPathTemplate, adobeVersions: AdobeVersions),
+        Settings(adobeVersions: AdobeVersions),
         [Dword(RegistryRoot.CurrentUser, AcrobatPrivilegedPathTemplate, "bProtectedMode", "1")],
         NoConstraints,
         [AdobeNotInstalled]);
@@ -240,7 +253,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.Adobe,
-        Settings(AcrobatTrustManagerPathTemplate, adobeVersions: AdobeVersions),
+        Settings(adobeVersions: AdobeVersions),
         [Dword(RegistryRoot.CurrentUser, AcrobatTrustManagerPathTemplate, "iProtectedView", "1")],
         NoConstraints,
         [AdobeNotInstalled]);
@@ -254,7 +267,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.Adobe,
-        Settings(AcrobatTrustManagerPathTemplate, adobeVersions: AdobeVersions),
+        Settings(adobeVersions: AdobeVersions),
         [
             Dword(RegistryRoot.CurrentUser, AcrobatTrustManagerPathTemplate, "bEnhancedSecurityInBrowser", "1"),
             Dword(RegistryRoot.CurrentUser, AcrobatTrustManagerPathTemplate, "bEnhancedSecurityStandalone", "1"),
@@ -289,7 +302,7 @@ public static class MeasureCatalog
         RequiresElevation: false,
         HardenByDefault: true,
         MeasureGroup.OneNote,
-        Settings(OfficeOptionsPathTemplate, OfficeVersions, apps: OneNoteApp),
+        Settings(officeVersions: OfficeVersions, apps: OneNoteApp),
         [Dword(RegistryRoot.CurrentUser, OfficeOptionsPathTemplate, "DisableEmbeddedFiles", "1")],
         NoConstraints,
         [OneNoteNotInstalled]);
@@ -569,17 +582,11 @@ public static class MeasureCatalog
         All.Where(descriptor => descriptor.Group == group).ToList();
 
     private static IReadOnlyDictionary<string, string> Settings(
-        string? pathTemplate = null,
         string? officeVersions = null,
         string? adobeVersions = null,
         string? apps = null)
     {
         var settings = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (pathTemplate is not null)
-        {
-            settings["PathTemplate"] = pathTemplate;
-        }
-
         if (officeVersions is not null)
         {
             settings["OfficeVersions"] = officeVersions;
@@ -598,9 +605,21 @@ public static class MeasureCatalog
         return settings;
     }
 
-    private static MeasureTarget Dword(RegistryRoot root, string path, string valueName, string hardenedValue) =>
-        new(root, path, valueName, DwordKind, hardenedValue);
+    private static MeasureTarget Dword(
+        RegistryRoot root,
+        string path,
+        string valueName,
+        string hardenedValue,
+        string? appFilter = null,
+        string? versionFilter = null) =>
+        new(root, path, valueName, DwordKind, hardenedValue, appFilter, versionFilter);
 
-    private static MeasureTarget Sz(RegistryRoot root, string path, string valueName, string hardenedValue) =>
-        new(root, path, valueName, StringKind, hardenedValue);
+    private static MeasureTarget Sz(
+        RegistryRoot root,
+        string path,
+        string valueName,
+        string hardenedValue,
+        string? appFilter = null,
+        string? versionFilter = null) =>
+        new(root, path, valueName, StringKind, hardenedValue, appFilter, versionFilter);
 }

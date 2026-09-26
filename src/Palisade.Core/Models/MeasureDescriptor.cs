@@ -37,16 +37,36 @@ public sealed record MeasureConstraint(MeasureId Target, string Reason);
 /// <c>"Dword"</c>, <c>"String"</c> or <c>"MultiString"</c> and drives the read and the
 /// write, so a measure that writes both a REG_SZ and a REG_DWORD at one path needs no
 /// bespoke encoding. <see cref="HardenedValue"/> is the string form of the hardened
-/// value; for <c>"Dword"</c> it is decimal digits.
+/// value; for <c>"Dword"</c> it is decimal digits, and it may be empty
+/// (<c>SecureURL\Value</c> hardens to <c>""</c>). <see cref="Path"/> may contain
+/// <c>%s</c>, the placeholder for the product version.
 /// </summary>
-public sealed record MeasureTarget(RegistryRoot Root, string Path, string ValueName, string Kind, string HardenedValue);
+/// <param name="AppFilter">
+/// Comma-separated allowlist of apps this target applies to, or <c>null</c> for no
+/// narrowing. <c>office.go</c> scopes <c>AllowDDE</c> to Word and
+/// <c>WorkbookLinkWarnings</c> to Excel; every other target applies to every discovered
+/// product.
+/// </param>
+/// <param name="VersionFilter">
+/// Comma-separated allowlist of versions this target applies to, or <c>null</c> for no
+/// narrowing. <c>AllowDDE</c> and both <c>DontUpdateLinks</c> sub-values are scoped to
+/// Office 14-16 and skip 12.0 upstream.
+/// </param>
+public sealed record MeasureTarget(
+    RegistryRoot Root,
+    string Path,
+    string ValueName,
+    string Kind,
+    string HardenedValue,
+    string? AppFilter = null,
+    string? VersionFilter = null);
 
 /// <summary>
 /// A measure as data. <see cref="Mechanism"/> is the classification the engine dispatches
-/// on; <see cref="Targets"/> is the registry payload, one entry per value written.
-/// <see cref="Settings"/> holds only the non-registry-family parameters:
-/// <c>"PathTemplate"</c>, <c>"OfficeVersions"</c>, <c>"AdobeVersions"</c> and
-/// <c>"Apps"</c>.
+/// on; <see cref="Targets"/> is the registry payload, one entry per value written, each
+/// carrying its own path template and optional narrowing. <see cref="Settings"/> holds
+/// only the product universe to expand: <c>"OfficeVersions"</c>, <c>"AdobeVersions"</c>
+/// and <c>"Apps"</c>.
 /// </summary>
 public sealed record MeasureDescriptor(
     MeasureId Id,

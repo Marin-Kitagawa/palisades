@@ -108,22 +108,23 @@ public class MeasureCatalogTests
     [Fact]
     public void LibreOffice_SecureURL_hardens_to_the_empty_string()
     {
-        // libreoffice.go:44-51 writes `SecureURL` to the empty string; libreoffice.go:62-69
-        // then clears its `Final` flag to 0 so the user may still change it. The empty
-        // hardened value is what rules out encoding targets inside a settings string. The
-        // descriptor is picked by shape, not by id, so the test survives an id rename.
+        // libreoffice.go:44-51 hardens `SecureURL\Value` to "". Any validation that rejects a
+        // blank hardened value silently drops this target, and any string-encoding of the
+        // payload cannot distinguish it from a missing one. This is the concrete case that
+        // ruled out encoding targets inside a settings string.
         var macro = MeasureCatalog.All.Single(m => m.Group == MeasureGroup.LibreOffice
             && m.Targets.Any(t => t.Path.Contains("MacroSecurityLevel", StringComparison.Ordinal)));
-        Assert.Contains(macro.Targets, t =>
-            t.Path.Contains("SecureURL", StringComparison.Ordinal)
-            && t.ValueName == "Value"
-            && t.Kind == "String"
-            && t.HardenedValue == string.Empty);
-        Assert.Contains(macro.Targets, t =>
-            t.Path.Contains("SecureURL", StringComparison.Ordinal)
-            && t.ValueName == "Final"
-            && t.Kind == "Dword"
-            && t.HardenedValue == "0");
+        // Two targets sit under the SecureURL path (SZ "Value" and DWORD "Final"), so filter
+        // on the value name rather than asserting the path is unique. The predicate overload
+        // of Assert.Single is used rather than a Where clause, which xUnit2031 rejects.
+        var secureUrl = Assert.Single(macro.Targets, t =>
+            t.Path.Contains("SecureURL", StringComparison.Ordinal) && t.ValueName == "Value");
+        Assert.Equal("String", secureUrl.Kind);
+        Assert.Equal(string.Empty, secureUrl.HardenedValue);
+        var secureUrlFinal = Assert.Single(macro.Targets, t =>
+            t.Path.Contains("SecureURL", StringComparison.Ordinal) && t.ValueName == "Final");
+        Assert.Equal("Dword", secureUrlFinal.Kind);
+        Assert.Equal("0", secureUrlFinal.HardenedValue);
     }
 
     [Fact]
@@ -152,6 +153,33 @@ public class MeasureCatalogTests
         Assert.Contains(@"\SecureURL", paths, StringComparison.Ordinal);
         Assert.Contains(@"\CheckInterval", paths, StringComparison.Ordinal);
         Assert.Contains(@"org.openoffice.Office.Writer\Content\Update\Link", paths, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Narrowed_targets_declare_their_app_and_version_scope()
+    {
+        // Guards against the widening failure: if every DDE sub-value inherited the
+        // descriptor's full version and app lists, Task 6 would write 32 registry values
+        // where the Go tool writes 17, setting DDE keys on products upstream leaves alone.
+        var narrowed = MeasureCatalog.All.SelectMany(m => m.Targets)
+            .Where(t => t.AppFilter is not null || t.VersionFilter is not null).ToList();
+        Assert.NotEmpty(narrowed);
+        Assert.All(narrowed, t =>
+        {
+            Assert.NotNull(t.Path);
+            Assert.False(string.IsNullOrWhiteSpace(t.AppFilter ?? t.VersionFilter));
+        });
+    }
+
+    [Fact]
+    public void Only_the_DDE_measure_narrows_its_targets()
+    {
+        // Versioned-path and LibreOffice measures apply to every discovered product upstream,
+        // so a filter on them would itself be a divergence.
+        var narrowing = MeasureCatalog.All
+            .Where(m => m.Targets.Any(t => t.AppFilter is not null || t.VersionFilter is not null))
+            .Select(m => m.Id.Value).ToList();
+        Assert.Single(narrowing);
     }
 
     [Fact]
