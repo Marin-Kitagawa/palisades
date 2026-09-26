@@ -317,9 +317,12 @@ public class TestRegistryTests
     [Fact]
     public void DeleteKey_removes_the_key_and_everything_beneath_it()
     {
-        // Real RegDeleteKey removes a subtree, and both upstream call sites depend on it:
-        // the DisallowRun subkey once its last entry is gone (cmd.go:136), and the whole
-        // saved-state key on restore (utils.go:159).
+        // The fake removes a subtree, which is RegDeleteTree (DeleteSubKeyTree in .NET) rather
+        // than RegDeleteKey -- the latter fails with ERROR_ACCESS_DENIED on a key with subkeys.
+        // Both upstream call sites delete keys that have none (the DisallowRun subkey once its
+        // last entry is gone at cmd.go:136, the whole saved-state key on restore at
+        // utils.go:159), so Go never reaches the case. Task 11's real adapter must use
+        // DeleteSubKeyTree so the fake and production agree.
         var registry = new InMemoryRegistry();
         Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
         Seed(registry, RegistryRoot.CurrentUser, @"Software\A\B", "W");
@@ -426,6 +429,65 @@ public class TestRegistryTests
         Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, writable: false));
         Assert.Null(registry.OpenKey(
             RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath + "Sub", writable: false));
+    }
+
+    [Fact]
+    public void DeleteKey_refuses_an_empty_subkey_instead_of_wiping_the_root()
+    {
+        // An empty subKey composes "CURRENT_USER\", which is a prefix of every key under the
+        // root, so without a guard this deletes the entire root and reports success. Real
+        // RegDeleteKey(HKCU, "") fails, so refusing is the faithful answer. RegistryOptions is a
+        // record with a public positional parameter, so new RegistryOptions("") compiles and
+        // nothing upstream stops it arriving here.
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A\B", "W");
+
+        Assert.False(registry.DeleteKey(RegistryRoot.CurrentUser, string.Empty));
+
+        Assert.NotNull(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: false));
+        Assert.NotNull(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A\B", writable: false));
+    }
+
+    [Fact]
+    public void DeleteKey_refuses_a_separator_only_subkey()
+    {
+        // "\" composes "CURRENT_USER\\", which today matches nothing by accident of the
+        // doubled backslash. Seeding a key at that literal path makes the assertion bite: the
+        // refusal has to be a deliberate guard, not the accident it currently is.
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
+        Seed(registry, RegistryRoot.CurrentUser, "\\", "W");
+
+        Assert.False(registry.DeleteKey(RegistryRoot.CurrentUser, @"\"));
+
+        Assert.NotNull(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: false));
+        Assert.NotNull(registry.OpenKey(RegistryRoot.CurrentUser, "\\", writable: false));
+    }
+
+    [Fact]
+    public void Using_a_key_after_disposing_it_throws()
+    {
+        // A real RegistryKey throws ObjectDisposedException. Without this a handler could read
+        // through a disposed handle all the way through the suite and then crash in production,
+        // which is the class of bug the fake exists to catch.
+        var registry = new InMemoryRegistry();
+        var key = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
+        key.SetDword("V", 1);
+        key.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => key.GetValueKind("V"));
+        Assert.Throws<ObjectDisposedException>(() => key.TryGetDword("V", out _));
+        Assert.Throws<ObjectDisposedException>(() => key.TryGetString("V", out _));
+        Assert.Throws<ObjectDisposedException>(() => key.TryGetMultiString("V", out _));
+        Assert.Throws<ObjectDisposedException>(() => key.GetValueNames());
+        Assert.Throws<ObjectDisposedException>(() => key.SetDword("V", 2));
+        Assert.Throws<ObjectDisposedException>(() => key.SetString("V", "2"));
+        Assert.Throws<ObjectDisposedException>(() => key.SetMultiString("V", ["2"]));
+        Assert.Throws<ObjectDisposedException>(() => key.DeleteValue("V"));
+
+        // Disposing again is not an error: Dispose is idempotent, as it is on the real handle.
+        key.Dispose();
     }
 
     [Fact]

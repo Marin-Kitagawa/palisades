@@ -61,17 +61,37 @@ public sealed class InMemoryRegistry : IRegistry, IRegistryKeyFactory
     }
 
     /// <summary>
-    /// Removes the key and its whole subtree, the way <c>RegDeleteKey</c> does, and returns
-    /// whether anything was removed. A key is a path string, so a descendant is one that
-    /// extends the parent's path with a <c>\</c>-prefixed segment; the caller may already have
-    /// supplied that separator, because the saved-state path ends in one
-    /// (<c>constants.go:20</c>), and appending another would look for a doubled backslash
-    /// and match no descendant at all.
+    /// Removes the key and its whole subtree, and returns whether anything was removed. A key is
+    /// a path string, so a descendant is one that extends the parent's path with a
+    /// <c>\</c>-prefixed segment.
+    /// The subtree is <c>RegDeleteTree</c> behaviour - <c>DeleteSubKeyTree</c> in .NET - and not
+    /// <c>RegDeleteKey</c>, which fails with <c>ERROR_ACCESS_DENIED</c> on a key that has
+    /// subkeys. Go's <c>registry.DeleteKey</c> is plain <c>RegDeleteKey</c>, so the three
+    /// upstream call sites would error on a key with subkeys; none of them has any, so Go never
+    /// reaches the case. The divergence from Go is deliberate and unreachable in practice.
+    /// Task 11's real adapter must call <c>DeleteSubKeyTree</c>, not <c>DeleteSubKey</c>, so the
+    /// fake and production agree.
     /// </summary>
     public bool DeleteKey(RegistryRoot root, string subKey)
     {
-        var path = KeyPath(root, subKey);
-        var prefix = path.EndsWith('\\') ? path : path + "\\";
+        // The trailing separator is trimmed rather than compensated for when appending, because
+        // the saved-state path ends in one (constants.go:20) and appending another would look
+        // for a doubled backslash and match no descendant at all. Trimming also settles the
+        // prefix: the composed path can no longer end in a separator, so the descendant scan
+        // only ever needs one.
+        //
+        // An empty or separator-only subKey is refused outright. It would compose a root path
+        // such as "CURRENT_USER\", which is a prefix of every key under the root, so the delete
+        // would take the whole root with it and report success. Real RegDeleteKey(HKCU, "") fails,
+        // so refusing is also the faithful answer.
+        var trimmed = subKey.TrimEnd('\\');
+        if (trimmed.Length == 0)
+        {
+            return false;
+        }
+
+        var path = KeyPath(root, trimmed);
+        var prefix = path + "\\";
 
         // Materialised before removing: the keys cannot be enumerated while being mutated.
         var doomed = _entries.Keys
@@ -120,11 +140,17 @@ public sealed class InMemoryRegistry : IRegistry, IRegistryKeyFactory
 /// </summary>
 public sealed class InMemoryRegistryKey(InMemoryRegistry.InMemoryEntry entry) : IRegistryKey
 {
-    public RegistryValueKind GetValueKind(string name) =>
-        entry.Values.TryGetValue(name, out var stored) ? stored.Kind : RegistryValueKind.None;
+    private bool _disposed;
+
+    public RegistryValueKind GetValueKind(string name)
+    {
+        ThrowIfDisposed();
+        return entry.Values.TryGetValue(name, out var stored) ? stored.Kind : RegistryValueKind.None;
+    }
 
     public bool TryGetDword(string name, out uint value)
     {
+        ThrowIfDisposed();
         if (TryGet(name, RegistryValueKind.Dword, out var stored) && stored.Value is uint dword)
         {
             value = dword;
@@ -137,6 +163,7 @@ public sealed class InMemoryRegistryKey(InMemoryRegistry.InMemoryEntry entry) : 
 
     public bool TryGetString(string name, out string value)
     {
+        ThrowIfDisposed();
         if (TryGet(name, RegistryValueKind.String, out var stored) && stored.Value is string text)
         {
             value = text;
@@ -149,6 +176,7 @@ public sealed class InMemoryRegistryKey(InMemoryRegistry.InMemoryEntry entry) : 
 
     public bool TryGetMultiString(string name, out string[] value)
     {
+        ThrowIfDisposed();
         if (TryGet(name, RegistryValueKind.MultiString, out var stored) && stored.Value is string[] list)
         {
             // A fresh array per read, so a caller cannot edit the hive through the result.
@@ -160,29 +188,51 @@ public sealed class InMemoryRegistryKey(InMemoryRegistry.InMemoryEntry entry) : 
         return false;
     }
 
-    public void SetDword(string name, uint value) => entry.Values[name] = (RegistryValueKind.Dword, value);
+    public void SetDword(string name, uint value)
+    {
+        ThrowIfDisposed();
+        entry.Values[name] = (RegistryValueKind.Dword, value);
+    }
 
-    public void SetString(string name, string value) => entry.Values[name] = (RegistryValueKind.String, value);
+    public void SetString(string name, string value)
+    {
+        ThrowIfDisposed();
+        entry.Values[name] = (RegistryValueKind.String, value);
+    }
 
-    public void SetMultiString(string name, IReadOnlyList<string> value) =>
+    public void SetMultiString(string name, IReadOnlyList<string> value)
+    {
+        ThrowIfDisposed();
         entry.Values[name] = (RegistryValueKind.MultiString, value.ToArray());
+    }
 
     /// <summary>
     /// Deleting a name that is not there is a no-op, not an exception. The Go tool logs the
     /// failure and carries on (<c>registry_utils.go:577-580</c>), and restore on a machine
     /// that has already lost the value must not abort.
     /// </summary>
-    public void DeleteValue(string name) => entry.Values.Remove(name);
+    public void DeleteValue(string name)
+    {
+        ThrowIfDisposed();
+        entry.Values.Remove(name);
+    }
 
     /// <summary>Sorted, so the order never depends on the dictionary's internal layout.</summary>
-    public IReadOnlyList<string> GetValueNames() =>
-        entry.Values.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
-
-    public void Dispose()
+    public IReadOnlyList<string> GetValueNames()
     {
-        // Nothing to release: the hive is a dictionary the registry itself owns, which is
-        // why a handle stays readable after it is disposed.
+        ThrowIfDisposed();
+        return entry.Values.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    /// <summary>
+    /// There is still no handle to release: the hive is a dictionary the registry itself owns.
+    /// What disposal buys is that the handle stops answering, so a use-after-dispose throws here
+    /// as it would on a real <c>RegistryKey</c> instead of quietly returning a value that would
+    /// only fail once the same code ran for real. Disposing twice is not an error.
+    /// </summary>
+    public void Dispose() => _disposed = true;
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
     private bool TryGet(string name, RegistryValueKind kind, out (RegistryValueKind Kind, object Value) stored)
     {
