@@ -110,15 +110,17 @@ public class MeasureCatalogTests
     {
         // libreoffice.go:44-51 writes `SecureURL` to the empty string; libreoffice.go:62-69
         // then clears its `Final` flag to 0 so the user may still change it. The empty
-        // hardened value is what rules out encoding targets inside a settings string.
-        var macro = MeasureCatalog.All.Single(m => m.Id == new MeasureId("LibreOfficeMacroSecurity"));
+        // hardened value is what rules out encoding targets inside a settings string. The
+        // descriptor is picked by shape, not by id, so the test survives an id rename.
+        var macro = MeasureCatalog.All.Single(m => m.Group == MeasureGroup.LibreOffice
+            && m.Targets.Any(t => t.Path.Contains("MacroSecurityLevel", StringComparison.Ordinal)));
         Assert.Contains(macro.Targets, t =>
-            t.Path.EndsWith(@"\SecureURL", StringComparison.Ordinal)
+            t.Path.Contains("SecureURL", StringComparison.Ordinal)
             && t.ValueName == "Value"
             && t.Kind == "String"
             && t.HardenedValue == string.Empty);
         Assert.Contains(macro.Targets, t =>
-            t.Path.EndsWith(@"\SecureURL", StringComparison.Ordinal)
+            t.Path.Contains("SecureURL", StringComparison.Ordinal)
             && t.ValueName == "Final"
             && t.Kind == "Dword"
             && t.HardenedValue == "0");
