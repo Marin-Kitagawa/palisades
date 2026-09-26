@@ -283,4 +283,33 @@ public class RegistryKeyNamesTests
             Assert.All(prefixes, other => Assert.False(
                 other != prefix && other.StartsWith(prefix, StringComparison.Ordinal)));
     }
+
+    [Fact]
+    public void The_saved_state_kinds_are_exactly_these_five_in_this_order()
+    {
+        // LegacyString is unreachable, and the member is kept on purpose so a future
+        // legacy-string format does not fall into LegacyDword. Pinning the set and the order
+        // keeps a `switch` that handles it explicitly compiling.
+        Assert.Equal(
+            new[] { "Dword", "String", "NotExisting", "LegacyDword", "LegacyString" },
+            Enum.GetNames<SavedStateKind>());
+    }
+
+    [Fact]
+    public void The_entry_carries_its_fields_by_name_and_flags_a_warning()
+    {
+        // Task 5 builds SavedStateEntry from these fields and reads Warning first, so the
+        // shape is a contract in its own right.
+        var resolved = new SavedStateEntry(
+            SavedStateKind.Dword, RegistryRoot.LocalMachine, @"Software\Foo", "Bar", null);
+        Assert.Equal(SavedStateKind.Dword, resolved.Kind);
+        Assert.Equal(RegistryRoot.LocalMachine, resolved.Root);
+        Assert.Equal(@"Software\Foo", resolved.KeyPath);
+        Assert.Equal("Bar", resolved.ValueName);
+        Assert.Null(resolved.Warning);
+
+        var unresolvable = resolved with { Warning = "unresolvable" };
+        Assert.Equal("unresolvable", unresolvable.Warning);
+        Assert.Equal(@"Software\Foo", unresolvable.KeyPath);
+    }
 }
