@@ -1,0 +1,318 @@
+<!--
+  Palisade hardening surface — Fluent (WinUI) layout.
+  Page header, info bars, measure cards with toggles and state pills,
+  detail rail with the blast-radius figure, dialog confirmations.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Palisade.App.ViewModels"
+             xmlns:c="using:Palisade.App.Controls"
+             x:Class="Palisade.App.Views.HardenView"
+             x:DataType="vm:HardenViewModel">
+
+  <UserControl.Resources>
+    <!-- Measure card -->
+    <DataTemplate x:Key="MeasureCardTemplate" x:DataType="vm:RodViewModel">
+      <Border Classes="card" Classes.cardSelected="{Binding IsSelected}" Margin="0,0,0,8"
+              Cursor="Hand" Tapped="OnMeasureCardTapped">
+        <Grid ColumnDefinitions="*,Auto" >
+          <StackPanel Spacing="4" Margin="0,2">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding LongName}" Classes="cardTitle" TextWrapping="Wrap" />
+              <Border Background="{StaticResource WarningSoftBrush}" CornerRadius="3"
+                      Padding="6,1" VerticalAlignment="Center"
+                      IsVisible="{Binding RequiresElevation}">
+                <TextBlock Text="admin" FontSize="11"
+                           Foreground="{StaticResource WarningBrush}" />
+              </Border>
+            </StackPanel>
+            <TextBlock Text="{Binding Consequence}" Classes="secondary"
+                       FontSize="{StaticResource TypeCaption}" MaxLines="2"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding TargetsSummary}" Classes="mono tertiary" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center" Spacing="8">
+            <Border Background="{Binding StateSoftBrush}" CornerRadius="10" Padding="9,3"
+                    HorizontalAlignment="Right">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Ellipse Width="7" Height="7" Fill="{Binding StateBrush}"
+                         VerticalAlignment="Center" />
+                <TextBlock Text="{Binding StateWord}" FontSize="11.5"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+              </StackPanel>
+            </Border>
+            <ToggleSwitch IsChecked="{Binding IsCheckedForApply, Mode=TwoWay}"
+                          IsEnabled="{Binding Checkable}"
+                          IsVisible="{Binding IsEditable}"
+                          HorizontalAlignment="Right"
+                          ToolTip.Tip="Include this measure" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <Style Selector="Border.measureRow">
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="TextBlock.infoText">
+      <Setter Property="FontSize" Value="{StaticResource TypeCaption}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.groupHeader">
+      <Setter Property="Margin" Value="0,4,0,8" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="28,20,28,16">
+
+      <!-- ================= Page header ================= -->
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="pageTitle" Text="Palisade" />
+          <TextBlock Classes="secondary"
+                     Text="Reversible hardening for this user account — every change is recorded so it can be undone exactly." />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Spacing="10">
+          <ToggleSwitch IsChecked="{Binding IsExpertMode, Mode=TwoWay}"
+                        Content="Expert settings" VerticalAlignment="Center"
+                        ToolTip.Tip="Show per-measure toggles. Only if you know what you are doing." />
+        </StackPanel>
+      </Grid>
+
+      <!-- ================= Info bars ================= -->
+      <StackPanel Grid.Row="1" Spacing="8" Margin="0,0,0,12">
+        <Border Background="{StaticResource WarningSoftBrush}" CornerRadius="6" Padding="12,9"
+                IsVisible="{Binding IsElevated, Converter={x:Static BoolConverters.Not}}">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Classes="navIcon" Text="&#xE7BA;" Foreground="{StaticResource WarningBrush}"
+                       VerticalAlignment="Center" Margin="0,0,10,0" />
+            <TextBlock Grid.Column="1" Classes="infoText" TextWrapping="Wrap"
+                       Foreground="{StaticResource WarningBrush}"
+                       Text="Running as a standard user — measures that need administrator rights are unavailable. Hardening other accounts means running Palisade once from each." />
+            <Button Grid.Column="2" Classes="subtle" Content="Relaunch as administrator"
+                    FontSize="{StaticResource TypeCaption}" MinHeight="28" MinWidth="0" Padding="8,4"
+                    Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).RelaunchElevatedCommand}"
+                    Foreground="{StaticResource WarningBrush}"
+                    VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+        <Border Background="{StaticResource LayerAltBrush}" CornerRadius="6" Padding="12,9"
+                BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Classes="navIcon" Text="&#xE946;" Foreground="{StaticResource AccentBrush}"
+                       VerticalAlignment="Center" Margin="0,0,10,0" />
+            <TextBlock Grid.Column="1" Classes="infoText secondary" Text="{Binding StatusLine}"
+                       TextWrapping="Wrap" VerticalAlignment="Center" />
+            <Button Grid.Column="2" Classes="subtle" Content="Refresh" FontSize="{StaticResource TypeCaption}"
+                    MinHeight="28" MinWidth="0" Padding="8,4" Command="{Binding RefreshCommand}"
+                    VerticalAlignment="Center" />
+          </Grid>
+        </Border>
+      </StackPanel>
+
+      <!-- ================= Content ================= -->
+      <Grid Grid.Row="2" ColumnDefinitions="*,380" Margin="0,0,0,0">
+
+        <!-- Measure cards -->
+        <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="0,0,12,0">
+            <ItemsControl ItemsSource="{Binding RodGroups}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RodGroupViewModel">
+                  <StackPanel>
+                    <Border Classes="groupHeader">
+                      <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                 Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Rods}"
+                                  ItemTemplate="{StaticResource MeasureCardTemplate}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border Height="8" />
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Detail rail -->
+        <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="12">
+            <Border Classes="card">
+              <StackPanel Spacing="8" IsVisible="{Binding SelectedRod, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Ellipse Width="8" Height="8" Fill="{Binding SelectedRod.StateBrush}"
+                           VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding SelectedRod.StateWord}" FontSize="12.5"
+                             Foreground="{StaticResource TextSecondaryBrush}"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="{Binding SelectedRod.LongName}" FontSize="{StaticResource TypeSubtitle}"
+                           FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SelectedRod.Consequence}" Classes="secondary"
+                           TextWrapping="Wrap" />
+                <Border Height="1" Background="{StaticResource DividerStrokeBrush}" Margin="0,4" />
+                <TextBlock Text="REGISTRY" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextTertiaryBrush}" />
+                <TextBlock Text="{Binding SelectedRod.TargetsSummary}" Classes="mono"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SelectedRod.RecordedOriginal}" Classes="mono"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SelectedRod.UnavailableReason}"
+                           IsVisible="{Binding SelectedRod.UnavailableReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Foreground="{StaticResource WarningBrush}" FontSize="{StaticResource TypeCaption}"
+                           TextWrapping="Wrap" />
+                <Border Height="1" Background="{StaticResource DividerStrokeBrush}" Margin="0,4" />
+                <TextBlock Text="CONSTRAINTS" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextTertiaryBrush}" />
+                <TextBlock Text="{Binding SelectedRod.ConstraintSummary}" Classes="mono"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+              <StackPanel Spacing="8">
+                <TextBlock Text="Blast radius" FontWeight="SemiBold" />
+                <TextBlock Classes="tertiary" FontSize="{StaticResource TypeCaption}"
+                           Text="Declared constraints of the selected measure. Selecting never silently widens the selection." />
+                <c:BlastRadius Height="260" Selected="{Binding SelectedDescriptor}" Catalog="{Binding Catalog}"
+                               HorizontalAlignment="Stretch" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <!-- ================= Command bar ================= -->
+      <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,14,0,0">
+        <Button Classes="accent" MinWidth="140" MinHeight="38" Command="{Binding ApplyCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="Apply" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ApplyLine}" FontSize="11.5" Opacity="0.85"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="1" Classes="subtle" Content="Restore all" Margin="10,0,0,0"
+                Command="{Binding RestoreCommand}" />
+        <Button Grid.Column="2" Classes="subtle" Content="Harden again (defaults)" Margin="10,0,0,0"
+                Command="{Binding HardenAgainCommand}" />
+        <Button Grid.Column="4" Classes="subtle" Content="Close receipt" Margin="10,0,0,0"
+                Command="{Binding CloseReceiptCommand}"
+                IsVisible="{Binding Receipt.IsVisible}" />
+      </Grid>
+    </Grid>
+
+    <!-- ================= Confirmation dialog ================= -->
+    <Border IsVisible="{Binding Confirm.IsVisible}" Background="{StaticResource SmokeBrush}">
+      <Border MaxWidth="640" MaxHeight="700" Background="{StaticResource LayerBrush}"
+              CornerRadius="8" BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1"
+              Padding="24" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center"
+              BoxShadow="0 8 32 0 #33000000">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="0,0,0,0">
+          <TextBlock Grid.Row="0" Text="{Binding Confirm.Title}" FontSize="{StaticResource TypeSubtitle}"
+                     FontWeight="SemiBold" TextWrapping="Wrap" />
+          <TextBlock Grid.Row="1" Text="{Binding Confirm.Preamble}" Margin="0,10,0,4"
+                     Classes="secondary" FontSize="{StaticResource TypeCaption}"
+                     TextWrapping="Wrap" />
+          <ScrollViewer Grid.Row="2" Margin="0,8,0,0">
+            <ItemsControl ItemsSource="{Binding Confirm.Rows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ConfirmationViewModel+ConfirmRow">
+                  <Border BorderBrush="{StaticResource DividerStrokeBrush}" BorderThickness="0,0,0,1"
+                          Padding="0,10">
+                    <StackPanel Spacing="3">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <Border Background="{StaticResource WarningSoftBrush}" CornerRadius="3"
+                                Padding="6,1" VerticalAlignment="Center"
+                                IsVisible="{Binding RequiresElevation}">
+                          <TextBlock Text="admin" FontSize="11" Foreground="{StaticResource WarningBrush}" />
+                        </Border>
+                      </StackPanel>
+                      <TextBlock Text="{Binding Consequence}" Classes="secondary"
+                                 FontSize="{StaticResource TypeCaption}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+          <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right"
+                      Margin="0,18,0,0" Spacing="10">
+            <Button Classes="subtle" Command="{Binding DiscardCommand}" Content="Cancel" />
+            <Button Classes="accent" Command="{Binding ConfirmApplyCommand}"
+                    Content="{Binding Confirm.ConfirmLabel}" MinWidth="120" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- ================= Receipt dialog ================= -->
+    <Border IsVisible="{Binding Receipt.IsVisible}" Background="{StaticResource SmokeBrush}">
+      <Border MaxWidth="640" MaxHeight="700" Background="{StaticResource LayerBrush}"
+              CornerRadius="8" BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1"
+              Padding="24" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center"
+              BoxShadow="0 8 32 0 #33000000">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+          <TextBlock Grid.Row="0" Text="{Binding Receipt.Title}" FontSize="{StaticResource TypeSubtitle}"
+                     FontWeight="SemiBold" />
+          <Border Grid.Row="1" Background="{StaticResource WarningSoftBrush}" CornerRadius="6"
+                  Padding="12,8" Margin="0,10,0,0"
+                  IsVisible="{Binding Receipt.RequiresRestart}">
+            <TextBlock Classes="infoText" TextWrapping="Wrap"
+                       Foreground="{StaticResource WarningBrush}"
+                       Text="A restart is required for the full effect of several measures." />
+          </Border>
+          <ScrollViewer Grid.Row="2" Margin="0,10,0,0">
+            <StackPanel>
+              <ItemsControl ItemsSource="{Binding Receipt.Rows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ReceiptViewModel+ResultRow">
+                    <Border BorderBrush="{StaticResource DividerStrokeBrush}" BorderThickness="0,0,0,1"
+                            Padding="0,8">
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,10,0"
+                                 Fill="{Binding Glyph, Converter={x:Static vm:StateToBrushConverter.Instance}}" />
+                        <TextBlock Grid.Column="1" Classes="mono" Text="{Binding Id}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding OutcomeWord}" FontSize="12.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Classes="tertiary" FontSize="{StaticResource TypeCaption}" Margin="0,10,0,0"
+                         IsVisible="{Binding Receipt.Warnings.Count, Converter={x:Static BoolConverters.Not}}"
+                         Text="No warnings." />
+              <ItemsControl ItemsSource="{Binding Receipt.Warnings}" Margin="0,10,0,0">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Foreground="{StaticResource ErrorBrush}" FontSize="{StaticResource TypeCaption}"
+                               Text="{Binding}" TextWrapping="Wrap" Margin="0,2,0,2" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+          <Button Grid.Row="3" Classes="accent" Content="Close" MinWidth="120"
+                  HorizontalAlignment="Right" Margin="0,18,0,0"
+                  Command="{Binding CloseReceiptCommand}" />
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- ================= Busy ================= -->
+    <Border IsVisible="{Binding IsBusy}" Background="{StaticResource SmokeBrush}">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+        <ProgressBar IsIndeterminate="True" Width="180" Height="4" />
+        <TextBlock Foreground="{StaticResource TextOnAccentBrush}" Text="Working on this account…" />
+      </StackPanel>
+    </Border>
+
+  </Panel>
+</UserControl>

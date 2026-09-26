@@ -1,0 +1,58 @@
+<!--
+  Palisade design tokens — Fluent 2 (WinUI) world, matching RyTuneX's design language.
+  Layered light surfaces, Segoe UI, system accent, 4px/8px radii, semantic state colors.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+  <!-- Layers (WinUI light theme fill colors) -->
+  <SolidColorBrush x:Key="BgBaseBrush" Color="#F3F3F3" />
+  <SolidColorBrush x:Key="LayerBrush" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="LayerAltBrush" Color="#FBFBFB" />
+  <SolidColorBrush x:Key="SmokeBrush" Color="#90000000" />
+  <SolidColorBrush x:Key="SubtleFillBrush" Color="#0A000000" />
+  <SolidColorBrush x:Key="SubtleFillHoverBrush" Color="#14000000" />
+
+  <!-- Strokes -->
+  <SolidColorBrush x:Key="CardStrokeBrush" Color="#EBEBEB" />
+  <SolidColorBrush x:Key="ControlStrokeBrush" Color="#E1E1E1" />
+  <SolidColorBrush x:Key="DividerStrokeBrush" Color="#EEEEEE" />
+
+  <!-- Text (WinUI text fill colors) -->
+  <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1B1B" />
+  <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5D5D5D" />
+  <SolidColorBrush x:Key="TextTertiaryBrush" Color="#8A8A8A" />
+  <SolidColorBrush x:Key="TextDisabledBrush" Color="#B6B6B6" />
+  <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
+
+  <!-- Accent (system accent blue, light theme) -->
+  <SolidColorBrush x:Key="AccentBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="AccentHoverBrush" Color="#1A86D9" />
+  <SolidColorBrush x:Key="AccentPressedBrush" Color="#005FB1" />
+  <SolidColorBrush x:Key="AccentTextBrush" Color="#0067C0" />
+  <SolidColorBrush x:Key="AccentSoftBrush" Color="#EAF3FC" />
+
+  <!-- Semantic states -->
+  <SolidColorBrush x:Key="SuccessBrush" Color="#0F7B0F" />
+  <SolidColorBrush x:Key="SuccessSoftBrush" Color="#EFF7EF" />
+  <SolidColorBrush x:Key="WarningBrush" Color="#9D5D00" />
+  <SolidColorBrush x:Key="WarningSoftBrush" Color="#FDF6EC" />
+  <SolidColorBrush x:Key="ErrorBrush" Color="#C42B1C" />
+  <SolidColorBrush x:Key="ErrorSoftBrush" Color="#FDF3F2" />
+
+  <!-- Faces -->
+  <FontFamily x:Key="UiFace">Segoe UI Variable Display, Segoe UI Variable Text, Segoe UI</FontFamily>
+  <FontFamily x:Key="MonoFace">Cascadia Mono, Consolas, Courier New</FontFamily>
+  <FontFamily x:Key="IconFace">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+  <!-- Type ramp -->
+  <sys:Double x:Key="TypeCaption">12</sys:Double>
+  <sys:Double x:Key="TypeBody">14</sys:Double>
+  <sys:Double x:Key="TypeBodyStrong">14</sys:Double>
+  <sys:Double x:Key="TypeSubtitle">20</sys:Double>
+  <sys:Double x:Key="TypeTitle">28</sys:Double>
+  <sys:Double x:Key="TypeDisplay">40</sys:Double>
+  <sys:Double x:Key="TypeMono">11.5</sys:Double>
+
+</ResourceDictionary>

@@ -1,0 +1,42 @@
+<!--
+  Palisade About — provenance and the not-an-antivirus boundary. Fluent page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Palisade.App.ViewModels"
+             x:Class="Palisade.App.Views.AboutView"
+             x:DataType="vm:AboutViewModel">
+
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel MaxWidth="760" Margin="32,24,32,32" Spacing="16" HorizontalAlignment="Left">
+
+      <TextBlock Text="About" Classes="pageTitle" />
+      <TextBlock Classes="secondary"
+                 Text="What Palisade does, what it does not do, and where every part of it comes from." />
+
+      <Border Classes="card" Margin="0,8,0,0">
+        <StackPanel Spacing="8">
+          <TextBlock Text="What it is" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding Boundary}" Classes="secondary" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Reversibility" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding Reversibility}" Classes="secondary" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="License and provenance" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding License}" Classes="secondary" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding TuningAttribution}" Classes="secondary" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding IconCredit}" Classes="tertiary" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

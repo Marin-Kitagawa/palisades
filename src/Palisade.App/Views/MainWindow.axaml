@@ -1,0 +1,138 @@
+<!--
+  Palisade shell — Fluent NavigationView.
+  Layered light surfaces, icon pane with accent selection pill, content frame
+  with the signature rounded top-left corner.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Palisade.App.ViewModels"
+        x:Class="Palisade.App.Views.MainWindow"
+        x:DataType="vm:ShellViewModel"
+        Title="Palisade — reversible hardening"
+        Width="1280" Height="860" MinWidth="1080" MinHeight="700"
+        Icon="avares://Palisade/Assets/palisade.ico"
+        Background="{StaticResource BgBaseBrush}"
+        FontFamily="{StaticResource UiFace}">
+
+  <Window.Styles>
+    <!-- Nav item: selection pill + subtle fill -->
+    <Style Selector="ListBox#NavRail">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+    </Style>
+    <Style Selector="ListBox#NavRail ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid Margin="8,2">
+            <Border x:Name="Pill" Width="3" Height="20" CornerRadius="2"
+                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                    Background="Transparent" />
+            <Border x:Name="ItemBg" Background="Transparent" CornerRadius="4"
+                    Padding="12,9,12,9">
+              <ContentPresenter Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}" />
+            </Border>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="ListBox#NavRail ListBoxItem:pointerover /template/ Border#ItemBg">
+      <Setter Property="Background" Value="{StaticResource SubtleFillBrush}" />
+    </Style>
+    <Style Selector="ListBox#NavRail ListBoxItem:selected /template/ Border#ItemBg">
+      <Setter Property="Background" Value="{StaticResource SubtleFillBrush}" />
+    </Style>
+    <Style Selector="ListBox#NavRail ListBoxItem:selected /template/ Border#Pill">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.wordmark">
+      <Setter Property="FontSize" Value="{StaticResource TypeBodyStrong}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.navTitle">
+      <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+    </Style>
+    <Style Selector="TextBlock.navSub">
+      <Setter Property="FontSize" Value="{StaticResource TypeCaption}" />
+      <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.navIcon">
+      <Setter Property="FontFamily" Value="{StaticResource IconFace}" />
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    </Style>
+  </Window.Styles>
+
+  <Grid ColumnDefinitions="272,1,*">
+
+    <!-- ===================== Pane ===================== -->
+    <Border Grid.Column="0" Background="Transparent">
+      <Grid RowDefinitions="48,Auto,*,Auto" Margin="0,0,0,16">
+
+        <!-- Pane header (title-bar height offset) -->
+        <StackPanel Grid.Row="0" Margin="20,14,20,0" Orientation="Horizontal" Spacing="10"
+                    VerticalAlignment="Center">
+          <Image Width="20" Height="20" Source="avares://Palisade/Assets/palisade.ico" />
+          <TextBlock Classes="wordmark" Text="Palisade" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- Privilege state -->
+        <StackPanel Grid.Row="1" Margin="20,10,16,0" Spacing="8">
+          <Border Background="{StaticResource LayerBrush}"
+                  BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1"
+                  CornerRadius="6" Padding="12,10">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="navSub" Text="{Binding PrivilegeLine}" TextWrapping="Wrap" />
+              <Button Classes="subtle" Content="Relaunch as administrator"
+                      FontSize="{StaticResource TypeCaption}"
+                      MinHeight="28" MinWidth="0" Padding="8,4"
+                      IsVisible="{Binding IsElevated, Converter={x:Static BoolConverters.Not}}"
+                      Command="{Binding RelaunchElevatedCommand}"
+                      HorizontalAlignment="Left"
+                      Foreground="{StaticResource AccentTextBrush}" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Navigation -->
+        <ListBox Grid.Row="2" x:Name="NavRail" Margin="0,12,0,0"
+                 ItemsSource="{Binding Navigation}"
+                 SelectedItem="{Binding SelectedNav, Mode=TwoWay}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:NavItemViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Classes="navIcon" Text="{Binding Icon}" />
+                <StackPanel>
+                  <TextBlock Classes="navTitle" Text="{Binding Title}" />
+                  <TextBlock Classes="navSub" Text="{Binding Subtitle}" TextWrapping="Wrap" />
+                </StackPanel>
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel Grid.Row="3" Margin="20,12,16,0" Spacing="2">
+          <TextBlock Classes="navSub" Text="GPLv3 — Security Without Borders" />
+          <TextBlock Classes="navSub" Text="not an antivirus" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Grid.Column="0" Width="1" HorizontalAlignment="Right"
+            Background="{StaticResource DividerStrokeBrush}" />
+
+    <!-- ===================== Content frame ===================== -->
+    <Border Grid.Column="2" Background="{StaticResource LayerBrush}"
+            CornerRadius="8,0,0,0" BorderBrush="{StaticResource CardStrokeBrush}"
+            BorderThickness="1,1,0,0" Margin="0,8,0,0">
+      <ContentControl Content="{Binding CurrentPage}" HorizontalContentAlignment="Stretch" />
+    </Border>
+
+  </Grid>
+</Window>

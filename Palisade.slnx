@@ -1,8 +1,12 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Palisade.Core/Palisade.Core.csproj" />
+    <Project Path="src/Palisade.Tuning/Palisade.Tuning.csproj" />
+    <Project Path="src/Palisade.Cli/Palisade.Cli.csproj" />
+    <Project Path="src/Palisade.App/Palisade.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Palisade.Core.Tests/Palisade.Core.Tests.csproj" />
+    <Project Path="tests/Palisade.Tuning.Tests/Palisade.Tuning.Tests.csproj" />
   </Folder>
 </Solution>

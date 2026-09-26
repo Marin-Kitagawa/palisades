@@ -1,0 +1,266 @@
+<!--
+  Palisade control styles — Fluent 2 (WinUI) controls.
+  Standard button, accent button, subtle button, WinUI ToggleSwitch and CheckBox,
+  slim overlay scrollbars, cards, state pills, info bars.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ============ Buttons ============ -->
+
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource ControlStrokeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="12,5" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="MinWidth" Value="80" />
+    <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
+    <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#F6F6F6" />
+    <Setter Property="BorderBrush" Value="#CCCCCC" />
+  </Style>
+  <Style Selector="Button:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="#F5F5F5" />
+    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    <Setter Property="BorderBrush" Value="#CCCCCC" />
+  </Style>
+  <Style Selector="Button:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="Button:focus /template/ ContentPresenter">
+    <Setter Property="BorderBrush" Value="{StaticResource TextPrimaryBrush}" />
+  </Style>
+
+  <!-- Accent -->
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextOnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="Button.accent:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource AccentPressedBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <!-- Subtle -->
+  <Style Selector="Button.subtle">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="Button.subtle:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource SubtleFillHoverBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+
+  <!-- ============ ToggleSwitch (WinUI) ============ -->
+
+  <Style Selector="ToggleSwitch">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
+    <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+    <Setter Property="MinHeight" Value="20" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Grid Width="40" Height="20">
+            <Border x:Name="Track" CornerRadius="10"
+                    Background="{StaticResource LayerBrush}"
+                    BorderBrush="#8A8A8A" BorderThickness="1" />
+            <Panel x:Name="PART_MovingKnobs" HorizontalAlignment="Left" Margin="3,0,0,0">
+              <Ellipse x:Name="Knob" Width="12" Height="12" Fill="#5D5D5D" />
+            </Panel>
+          </Grid>
+          <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"
+                            Content="{TemplateBinding Content}"
+                            Foreground="{TemplateBinding Foreground}" />
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleSwitch:checked /template/ Border#Track">
+    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ToggleSwitch:checked /template/ Ellipse#Knob">
+    <Setter Property="Fill" Value="{StaticResource TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="ToggleSwitch:checked /template/ Panel#PART_MovingKnobs">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="Margin" Value="0,0,3,0" />
+  </Style>
+  <Style Selector="ToggleSwitch:pointerover /template/ Border#Track">
+    <Setter Property="BorderBrush" Value="#666666" />
+  </Style>
+  <Style Selector="ToggleSwitch:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="ToggleSwitch:focus /template/ Border#Track">
+    <Setter Property="BorderBrush" Value="{StaticResource TextPrimaryBrush}" />
+  </Style>
+
+  <!-- ============ CheckBox (WinUI) ============ -->
+
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="8,0,0,0" />
+    <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+    <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Border x:Name="Box" Width="20" Height="20" CornerRadius="4" VerticalAlignment="Center"
+                  Background="{StaticResource LayerBrush}"
+                  BorderBrush="#8A8A8A" BorderThickness="1">
+            <Panel>
+              <Path x:Name="CheckMark" Data="M3,9.5 L7.5,14 L16,4.5" IsVisible="False"
+                    Stroke="{StaticResource TextOnAccentBrush}" StrokeThickness="1.6"
+                    StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" />
+            </Panel>
+          </Border>
+          <ContentPresenter x:Name="PART_ContentPresenter" Margin="{TemplateBinding Padding}"
+                            VerticalAlignment="Center"
+                            Content="{TemplateBinding Content}"
+                            Foreground="{TemplateBinding Foreground}" />
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="CheckBox:checked /template/ Border#Box">
+    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+  </Style>
+  <Style Selector="CheckBox:checked /template/ Border#Box Path#CheckMark">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="CheckBox:pointerover /template/ Border#Box">
+    <Setter Property="BorderBrush" Value="#666666" />
+  </Style>
+  <Style Selector="CheckBox:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="CheckBox:focus /template/ Border#Box">
+    <Setter Property="BorderBrush" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!-- ============ TextBox ============ -->
+
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource ControlStrokeBrush}" />
+    <Setter Property="BorderThickness" Value="1,1,1,1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
+    <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+    <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="SelectionBrush" Value="{StaticResource AccentSoftBrush}" />
+  </Style>
+  <Style Selector="TextBox:focus">
+    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1,1,1,2" />
+  </Style>
+
+  <!-- ============ ScrollBar: slim overlay thumb ============ -->
+
+  <Style Selector="ScrollBar">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ScrollBar /template/ Border#PART_BgBorder">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ScrollBar:vertical">
+    <Setter Property="Width" Value="12" />
+  </Style>
+  <Style Selector="ScrollBar:horizontal">
+    <Setter Property="Height" Value="12" />
+  </Style>
+  <Style Selector="ScrollBar Thumb">
+    <Setter Property="Background" Value="#8A8A8A" />
+    <Setter Property="MinWidth" Value="6" />
+    <Setter Property="MinHeight" Value="6" />
+  </Style>
+  <Style Selector="ScrollBar Thumb:pointerover">
+    <Setter Property="Background" Value="#666666" />
+  </Style>
+  <Style Selector="ScrollBar RepeatButton">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- ============ ToolTip ============ -->
+
+  <Style Selector="ToolTip">
+    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource ControlStrokeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="FontSize" Value="{StaticResource TypeCaption}" />
+    <Setter Property="MaxWidth" Value="420" />
+  </Style>
+
+  <!-- ============ Text defaults ============ -->
+
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.tertiary">
+    <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{StaticResource MonoFace}" />
+    <Setter Property="FontSize" Value="{StaticResource TypeMono}" />
+    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.pageTitle">
+    <Setter Property="FontSize" Value="{StaticResource TypeTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.cardTitle">
+    <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- ============ Card ============ -->
+
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource CardStrokeBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+  <Style Selector="Border.card:pointerover">
+    <Setter Property="BorderBrush" Value="#D6D6D6" />
+  </Style>
+  <Style Selector="Border.cardSelected">
+    <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+  </Style>
+
+</Styles>
