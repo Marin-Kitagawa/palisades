@@ -1,4 +1,4 @@
-﻿// Palisade Tuning â€” UI-independent port of RyTuneX tuning logic.
+// Palisade Tuning ” UI-independent port of RyTuneX tuning logic.
 // Copyright (C) 2017-2023 Security Without Borders
 // Portions Copyright (C) RyTuneX contributors, GPLv3
 //
@@ -195,7 +195,7 @@ public static class ServicesCatalog
 
     private static string ExtractName(string[] serviceCommands)
     {
-        // "sc stop SysMain" / "sc config SysMain start= disabled" â€” take the last token of the first command.
+        // "sc stop SysMain" / "sc config SysMain start= disabled" ” take the last token of the first command.
         var parts = serviceCommands[0].Split(' ');
         return parts[^1];
     }

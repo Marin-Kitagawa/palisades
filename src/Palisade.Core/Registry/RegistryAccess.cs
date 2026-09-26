@@ -1,4 +1,4 @@
-﻿// Hardentools
+// Hardentools
 // Copyright (C) 2017-2023 Security Without Borders
 //
 // This program is free software: you can redistribute it and/or modify
@@ -28,9 +28,9 @@ namespace Palisade.Core.Registry;
 /// constructor parameter.
 /// </summary>
 /// <remarks>
-/// <see cref="OpenKey"/> with <c>writable: true</c> creates the key on demand â€” the
+/// <see cref="OpenKey"/> with <c>writable: true</c> creates the key on demand ” the
 /// contract's documented conflation of Go's <c>CreateKey</c> (harden) and <c>OpenKey</c>
-/// (restore) â€” and returns <c>null</c> when the underlying open throws
+/// (restore) ” and returns <c>null</c> when the underlying open throws
 /// <see cref="SecurityException"/> or <see cref="IOException"/>, because both are normal
 /// absence, not errors. <see cref="DeleteKey"/> removes a whole subtree via
 /// <c>DeleteSubKeyTree</c>, deliberately diverging from Go's plain <c>RegDeleteKey</c>,

@@ -1,4 +1,4 @@
-﻿﻿// Palisade Tuning UI â€” view models for the Policies, Startup, Debloat and
+// Palisade Tuning UI ” view models for the Policies, Startup, Debloat and
 // Repair surfaces.
 // Copyright (C) 2017-2023 Security Without Borders
 // Portions Copyright (C) RyTuneX contributors, GPLv3
@@ -59,22 +59,37 @@ public partial class PoliciesViewModel : ObservableObject
     [ObservableProperty]
     private int _configuredCount;
 
+    /// <summary>
+    /// Default to showing only configured (actionable) policies; unconfigured
+    /// ones are noise unless you want the full audit.
+    /// </summary>
+    [ObservableProperty]
+    private bool _configuredOnly = true;
+
+    partial void OnConfiguredOnlyChanged(bool value) => RebuildRows();
+
+    private void RebuildRows()
+    {
+        Rows.Clear();
+        foreach (var state in _states
+            .Where(s => !ConfiguredOnly || s.IsConfigured)
+            .OrderBy(s => s.Policy.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(s => s.Policy.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            Rows.Add(new PolicyRowViewModel(state));
+        }
+    }
+
     private async Task RefreshAsync()
     {
         IsBusy = true;
         try
         {
             _states = await PolicyScanner.DetectPolicyStatesAsync().ConfigureAwait(true);
-            Rows.Clear();
-            foreach (var state in _states
-                .OrderBy(s => s.Policy.Category, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(s => s.Policy.Name, StringComparer.OrdinalIgnoreCase))
-            {
-                Rows.Add(new PolicyRowViewModel(state));
-            }
+            RebuildRows();
             ConfiguredCount = _states.Count(s => s.IsConfigured);
             StatusLine = ConfiguredCount == 0
-                ? "No policy overrides found â€” every known policy is Not Configured."
+                ? "No policy overrides found ” every known policy is Not Configured."
                 : $"{ConfiguredCount} of {_states.Count} known policies are configured on this machine.";
         }
         finally
@@ -96,7 +111,7 @@ public partial class PoliciesViewModel : ObservableObject
             await RefreshAsync().ConfigureAwait(true);
             StatusLine = ok
                 ? $"Reset to Not Configured: {row.Name}"
-                : $"Could not reset {row.Name} â€” access denied. Run as administrator.";
+                : $"Could not reset {row.Name} ” access denied. Run as administrator.";
         }
         finally
         {
@@ -152,7 +167,7 @@ public partial class PolicyRowViewModel : ObservableObject
     [ObservableProperty] private bool _isConfigured;
     [ObservableProperty] private string _currentValue;
 
-    public string RegistryPath => $"{State.Policy.Hive}\\Software\\Policies\\{State.Policy.RegistryPath.TrimStart('\\')} · {State.Policy.ValueName}";
+    public string RegistryPath => $"{State.Policy.Hive}\\{State.Policy.RegistryPath} · {State.Policy.ValueName}";
 }
 
 // ===================== Startup =====================
@@ -218,7 +233,7 @@ public partial class StartupViewModel : ObservableObject
             }
             StatusLine = ok
                 ? $"{(enable ? "Enabled" : "Disabled")}: {row.Name}"
-                : $"Could not change {row.Name} â€” access denied. Run as administrator.";
+                : $"Could not change {row.Name} ” access denied. Run as administrator.";
         }
         finally
         {
@@ -242,7 +257,7 @@ public partial class StartupViewModel : ObservableObject
             }
             StatusLine = ok
                 ? $"Removed: {row.Name}"
-                : $"Could not remove {row.Name} â€” access denied. Run as administrator.";
+                : $"Could not remove {row.Name} ” access denied. Run as administrator.";
         }
         finally
         {
@@ -391,10 +406,10 @@ public partial class DebloatViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            StatusLine = "Deep cleaning temp files â€” services stop, caches clear, the desktop may blink onceâ€¦";
+            StatusLine = "Deep cleaning temp files ” services stop, caches clear, the desktop may blink onceâ€¦";
             var (ok, bytes) = await TempCleaner.RemoveTempFilesAsync().ConfigureAwait(true);
             StatusLine = ok
-                ? $"Deep clean finished â€” about {bytes / (1024.0 * 1024.0):F1} MB cleared."
+                ? $"Deep clean finished ” about {bytes / (1024.0 * 1024.0):F1} MB cleared."
                 : "Deep clean hit an error partway; the desktop was restored.";
         }
         finally
@@ -458,7 +473,7 @@ public partial class RepairViewModel : ObservableObject
     {
         IsBusy = true;
         NeedsRepair = false;
-        StatusLine = "Checking system health â€” DISM, SFC and CHKDSK. This can take several minutes.";
+        StatusLine = "Checking system health ” DISM, SFC and CHKDSK. This can take several minutes.";
         OutputText = "";
         try
         {
@@ -490,7 +505,7 @@ public partial class RepairViewModel : ObservableObject
     private async Task RepairAsync()
     {
         IsBusy = true;
-        StatusLine = "Repairing flagged components â€” DISM /RestoreHealth and SFC /scannow run now; CHKDSK is scheduled for the next restart.";
+        StatusLine = "Repairing flagged components ” DISM /RestoreHealth and SFC /scannow run now; CHKDSK is scheduled for the next restart.";
         OutputText = "";
         try
         {

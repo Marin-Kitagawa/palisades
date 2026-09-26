@@ -15,8 +15,12 @@
         <TextBlock Classes="secondary"
                    Text="Group Policy overrides (gpedit.msc) detected on this machine. Resetting deletes the registry value — the policy returns to Not Configured." />
       </StackPanel>
-      <Button Grid.Column="1" Classes="accent" Content="Reset all configured" VerticalAlignment="Top"
-              Command="{Binding ResetAllCommand}" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Spacing="12">
+        <CheckBox IsChecked="{Binding ConfiguredOnly, Mode=TwoWay}" Content="Configured only"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="Show only policies with a configured override. Uncheck to audit all 207 known policies." />
+        <Button Classes="accent" Content="Reset all configured" Command="{Binding ResetAllCommand}" />
+      </StackPanel>
     </Grid>
 
     <Border Grid.Row="1" Background="{StaticResource LayerAltBrush}" CornerRadius="6" Padding="12,9"

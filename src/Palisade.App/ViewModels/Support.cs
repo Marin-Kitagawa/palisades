@@ -191,7 +191,7 @@ public partial class RodViewModel : ObservableObject
         RequiresElevation = descriptor.RequiresElevation;
         IsDefault = descriptor.HardenByDefault;
         IsCheckedForApply = descriptor.HardenByDefault;
-        IsEditable = false;
+        IsEditable = true;
         Targets = [.. descriptor.Targets];
     }
 

@@ -1,4 +1,4 @@
-﻿// Palisade Tuning â€” UI-independent port of RyTuneX tuning logic.
+// Palisade Tuning ” UI-independent port of RyTuneX tuning logic.
 // Copyright (C) 2017-2023 Security Without Borders
 // Portions Copyright (C) RyTuneX contributors, GPLv3
 //
@@ -156,7 +156,7 @@ public static class OptimizeCatalog
 
         Opt("window-shake",
             "Disable window shake minimize",
-            "Windows will no longer minimize every other window when you shake one â€” " +
+            "Windows will no longer minimize every other window when you shake one ” " +
             "a gesture that can scatter your work.",
             "Explorer", false,
             [
@@ -233,7 +233,7 @@ public static class OptimizeCatalog
 
         Opt("mouse-acceleration",
             "Disable mouse acceleration",
-            "Mouse movement maps 1:1 to the pointer â€” preferred for precision work and games.",
+            "Mouse movement maps 1:1 to the pointer ” preferred for precision work and games.",
             "Performance", false,
             [
                 """reg add "HKCU\Control Panel\Mouse" /v MouseSpeed /t REG_SZ /d 0 /f""",
@@ -278,7 +278,7 @@ public static class OptimizeCatalog
 
         Opt("wpbt",
             "Disable WPBT execution",
-            "Disables Windows Platform Binary Table execution â€” firmware can no longer " +
+            "Disables Windows Platform Binary Table execution ” firmware can no longer " +
             "inject code into Windows at boot.",
             "System", true,
             [
@@ -391,7 +391,7 @@ public static class OptimizeCatalog
 
         Opt("transparency",
             "Disable transparency effects",
-            "Windows and surfaces render solid instead of translucent â€” lighter on GPU.",
+            "Windows and surfaces render solid instead of translucent ” lighter on GPU.",
             "Personalization", false,
             [
                 """reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f""",

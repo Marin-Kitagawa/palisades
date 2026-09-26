@@ -1,4 +1,4 @@
-﻿// Palisade Tuning â€” UI-independent port of RyTuneX tuning logic.
+// Palisade Tuning ” UI-independent port of RyTuneX tuning logic.
 // Copyright (C) 2017-2023 Security Without Borders
 // Portions Copyright (C) RyTuneX contributors, GPLv3
 //

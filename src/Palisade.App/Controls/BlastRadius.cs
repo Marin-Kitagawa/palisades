@@ -1,4 +1,4 @@
-﻿// Palisade
+// Palisade
 // Copyright (C) 2017-2023 Security Without Borders
 //
 // This program is free software: you can redistribute it and/or modify
@@ -25,7 +25,7 @@ namespace Palisade.App.Controls;
 /// <summary>
 /// The blast-radius force diagram: for the selected rod, the measures it
 /// constrains and the measures that constrain it, drawn as an engineering
-/// figure over the same pale concrete. Deterministic layout â€” the same
+/// figure over the same pale concrete. Deterministic layout ” the same
 /// machine always draws the same figure. Labels are real measure names and
 /// the real constraint reasons; nothing here is illustrative.
 /// </summary>

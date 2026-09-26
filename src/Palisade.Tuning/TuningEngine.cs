@@ -1,4 +1,4 @@
-﻿// Palisade Tuning â€” UI-independent port of RyTuneX tuning logic.
+// Palisade Tuning ” UI-independent port of RyTuneX tuning logic.
 // Copyright (C) 2017-2023 Security Without Borders
 // Portions Copyright (C) RyTuneX contributors, GPLv3
 //
@@ -44,7 +44,7 @@ public static class TuningCatalog
 
 /// <summary>
 /// Applies and reverts tuning options by running their command lists through
-/// cmd, recording what was applied so it can be reverted exactly â€” the same
+/// cmd, recording what was applied so it can be reverted exactly ” the same
 /// reversibility contract the hardening measures follow.
 /// </summary>
 public static class TuningEngine

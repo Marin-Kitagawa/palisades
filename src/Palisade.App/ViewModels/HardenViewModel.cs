@@ -124,9 +124,6 @@ public partial class HardenViewModel : ObservableObject
     private MeasureDescriptor? _selectedDescriptor;
 
     [ObservableProperty]
-    private bool _isExpertMode;
-
-    [ObservableProperty]
     private string _statusLine = "reading the current state of this account…";
 
     partial void OnSelectedRodChanged(RodViewModel? value)
@@ -135,22 +132,6 @@ public partial class HardenViewModel : ObservableObject
         foreach (var rod in Rods)
         {
             rod.IsSelected = rod == value;
-        }
-    }
-
-    partial void OnIsExpertModeChanged(bool value)
-    {
-        foreach (var rod in Rods)
-        {
-            rod.IsEditable = value;
-        }
-        if (!value)
-        {
-            // Leaving expert mode returns the selection to the safe default path.
-            foreach (var rod in Rods)
-            {
-                rod.IsCheckedForApply = rod.IsDefault && rod.State != MeasureState.Unavailable;
-            }
         }
     }
 

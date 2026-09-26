@@ -43,9 +43,8 @@
             </Border>
             <ToggleSwitch IsChecked="{Binding IsCheckedForApply, Mode=TwoWay}"
                           IsEnabled="{Binding Checkable}"
-                          IsVisible="{Binding IsEditable}"
                           HorizontalAlignment="Right"
-                          ToolTip.Tip="Include this measure" />
+                          ToolTip.Tip="Include this measure when Apply runs" />
           </StackPanel>
         </Grid>
       </Border>
@@ -75,11 +74,6 @@
           <TextBlock Classes="pageTitle" Text="Palisade" />
           <TextBlock Classes="secondary"
                      Text="Reversible hardening for this user account — every change is recorded so it can be undone exactly." />
-        </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Spacing="10">
-          <ToggleSwitch IsChecked="{Binding IsExpertMode, Mode=TwoWay}"
-                        Content="Expert settings" VerticalAlignment="Center"
-                        ToolTip.Tip="Show per-measure toggles. Only if you know what you are doing." />
         </StackPanel>
       </Grid>
 

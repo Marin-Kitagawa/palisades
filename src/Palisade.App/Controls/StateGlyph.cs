@@ -1,4 +1,4 @@
-﻿// Palisade
+// Palisade
 // Copyright (C) 2017-2023 Security Without Borders
 //
 // This program is free software: you can redistribute it and/or modify
@@ -23,10 +23,10 @@ namespace Palisade.App.Controls;
 
 /// <summary>
 /// Draws the four hardening states as a drawn glyph, never color alone:
-/// Taut â€” filled carbon square crossed by a taut red cord.
-/// Slack â€” hollow ash square, cord dropped.
-/// Stressed â€” filled square crossed by a stressed zigzag cord.
-/// Unavailable â€” dashed ash square.
+/// Taut ” filled carbon square crossed by a taut red cord.
+/// Slack ” hollow ash square, cord dropped.
+/// Stressed ” filled square crossed by a stressed zigzag cord.
+/// Unavailable ” dashed ash square.
 /// </summary>
 public class StateGlyph : Control
 {
