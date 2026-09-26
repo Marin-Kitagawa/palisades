@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Palisade.Core/Palisade.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Palisade.Core.Tests/Palisade.Core.Tests.csproj" />
+  </Folder>
+</Solution>
