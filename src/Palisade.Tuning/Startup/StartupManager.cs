@@ -437,7 +437,7 @@ public static class StartupManager
     {
         try
         {
-            using var searcher = new System.Management.ManagementObjectSearcher($"SELECT * FROM Win32_StartupCommand WHERE Name = '{appName.Replace("'", "''")}'");
+            using var searcher = new global::System.Management.ManagementObjectSearcher($"SELECT * FROM Win32_StartupCommand WHERE Name = '{appName.Replace("'", "''")}'");
             foreach (var obj in searcher.Get())
             {
                 var cmd = obj["Command"]?.ToString();

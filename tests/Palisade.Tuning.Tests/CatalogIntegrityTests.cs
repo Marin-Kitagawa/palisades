@@ -1,4 +1,4 @@
-// Palisade Tuning — UI-independent port of RyTuneX tuning logic.
+﻿// Palisade Tuning â€” UI-independent port of RyTuneX tuning logic.
 // Copyright (C) 2017-2023 Security Without Borders
 // Portions Copyright (C) RyTuneX contributors, GPLv3
 //
@@ -55,7 +55,7 @@ public class CatalogIntegrityTests
         Assert.All(option.ApplyCommands, c => Assert.False(string.IsNullOrWhiteSpace(c)));
         Assert.All(option.RevertCommands, c => Assert.False(string.IsNullOrWhiteSpace(c)));
         Assert.Contains(option.Category,
-            (System.Collections.Generic.IEnumerable<string>)["AI", "Explorer", "Performance", "Gaming", "System", "Security", "Telemetry", "Services", "Network", "Personalization"]);
+            (global::System.Collections.Generic.IEnumerable<string>)["AI", "Explorer", "Performance", "Gaming", "System", "Security", "Telemetry", "Services", "Network", "Personalization", "Privacy", "Updates", "Power", "Third-party"]);
     }
 
     [Fact]

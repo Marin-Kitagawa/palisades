@@ -30,6 +30,11 @@ public static class TuningCatalog
     [
         .. OptimizeCatalog.All,
         .. ServicesCatalog.All,
+        .. PrivacyCatalog.All,
+        .. UpdatesCatalog.All,
+        .. GamingCatalog.All,
+        .. ShellCatalog.All,
+        .. ThirdPartyCatalog.All,
     ];
 
     public static TuningOption Get(string id) =>
@@ -68,5 +73,11 @@ public static class TuningEngine
             string.Join("\n", results.Where(r => r.Output.Length > 0).Select(r => r.Output)));
     }
 
-    public static bool IsApplied(string optionId) => TuningStateStore.IsApplied(optionId);
+    public static bool IsApplied(string optionId)
+    {
+        // Live registry/service detection first; the recorded marker is the
+        // fallback when the detector cannot tell (upstream's stored-state
+        // behavior).
+        return System.SystemState.DetectForOption(optionId) ?? TuningStateStore.IsApplied(optionId);
+    }
 }

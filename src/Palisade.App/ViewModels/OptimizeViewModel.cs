@@ -37,6 +37,16 @@ public partial class OptimizeViewModel : ObservableObject
 
         ToggleCommand = new AsyncRelayCommand<TuningToggleViewModel>(ToggleAsync, _ => !IsBusy);
         RevertAllCommand = new AsyncRelayCommand(RevertAllAsync, () => !IsBusy && AppliedCount > 0);
+
+        // Live applied-state detection runs off the UI thread; rows flip as
+        // results arrive.
+        _ = Task.Run(() =>
+        {
+            foreach (var toggle in AllToggles)
+            {
+                toggle.IsApplied = TuningEngine.IsApplied(toggle.Id);
+            }
+        });
     }
 
     private IReadOnlyList<TuningToggleViewModel> AllToggles { get; }

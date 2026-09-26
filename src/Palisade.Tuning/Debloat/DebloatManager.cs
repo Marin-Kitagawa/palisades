@@ -1,4 +1,4 @@
-﻿// Palisade Tuning - UI-independent port of RyTuneX tuning logic.
+// Palisade Tuning - UI-independent port of RyTuneX tuning logic.
 // Copyright (C) 2017-2023 Security Without Borders
 // Portions Copyright (C) RyTuneX contributors, GPLv3
 //
@@ -127,10 +127,10 @@ public static class DebloatManager
             {
                 return apps;
             }
-            using var doc = System.Text.Json.JsonDocument.Parse(output);
+            using var doc = global::System.Text.Json.JsonDocument.Parse(output);
             var root = doc.RootElement;
-            List<System.Text.Json.JsonElement> elements = [];
-            if (root.ValueKind == System.Text.Json.JsonValueKind.Array)
+            List<global::System.Text.Json.JsonElement> elements = [];
+            if (root.ValueKind == global::System.Text.Json.JsonValueKind.Array)
             {
                 foreach (var el in root.EnumerateArray())
                 {

@@ -71,13 +71,15 @@ tweaks. Every command string is upstream's.
    CoreAI/AIX packages and machine-learning DLL deletion) is not yet in the toggle's
    command list; it is the most destructive upstream operation and is deferred pending
    a confirmation step. The policy/service/schtasks surface of the same toggle ships.
-4. **Not yet ported** (scaffolded, incremental data entries):
-   - Remaining OptimizeSystemHelper pairs (Windows Update toggles, network
-     throttling variants, privacy/security page pairs beyond the above).
-   - All other Debloat page extras (winget-based suggested-app removal lists).
-   Every module surface named in the user request (policy scanner, startup manager,
-   debloat/winget, repair) now ships; the remaining items are additional toggle
-   definitions within the shipped architecture.
+4. **Completion note (2026-09-26)**: all remaining OptimizeSystemHelper Disable*/Enable*
+   pairs are now transcribed — the catalog holds **106 toggles** across Optimize,
+   Privacy, Updates, Gaming, Shell and Third-party catalogs, and SystemStateDetector
+   is fully ported (`System/SystemState.cs`) with live registry/service state detection
+   per toggle, falling back to the recorded marker when state cannot be determined
+   (upstream's own fallback). The four Windows Update modes are mutually exclusive —
+   apply the one you want; each reverts to upstream's default state. Skipped by
+   design: Copilot region-policy JSON edit and Voice Access file deletion (system-file
+   modification), Edge removal (unsigned upstream script).
 5. **WinRT-only surfaces** (app icon cache, Store review prompt, MSIX app info) were
    dropped: UI concerns with no tuning effect.
 
@@ -89,7 +91,7 @@ the Fluent world described in DESIGN.md.
 
 ## Tests
 
-`tests/Palisade.Tuning.Tests` — 41 tests: tuning-catalog integrity (unique ids,
-non-empty titles/descriptions/commands, known categories), policy-catalog integrity
-(207 transplanted entries, unique ids, absolute SOFTWARE paths, metadata completeness,
-applicability filtering) and engine lookup.
+`tests/Palisade.Tuning.Tests` — 107 tests: tuning-catalog integrity (unique ids,
+non-empty titles/descriptions/commands, known categories across all seven catalogs),
+policy-catalog integrity (207 transplanted entries, unique ids, absolute SOFTWARE
+paths, metadata completeness, applicability filtering) and engine lookup.
