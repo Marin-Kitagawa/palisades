@@ -59,7 +59,9 @@ public static class MeasureCatalog
     private const string EdgePolicyPath = @"SOFTWARE\Policies\Microsoft\Edge";
     private const string LibreOfficeScriptingPath = @"SOFTWARE\Policies\LibreOffice\org.openoffice.Office.Common\Security\Scripting";
     private const string LibreOfficeUpdateCheckPath = @"SOFTWARE\Policies\LibreOffice\org.openoffice.Office.Jobs\Jobs\org.openoffice.Office.Jobs:Job['UpdateCheck']\Arguments\AutoCheckEnabled";
+    private const string LibreOfficeCheckIntervalPath = @"SOFTWARE\Policies\LibreOffice\org.openoffice.Office.Jobs\Jobs\org.openoffice.Office.Jobs:Job['UpdateCheck']\Arguments\CheckInterval";
     private const string LibreOfficeCalcLinkPath = @"SOFTWARE\Policies\LibreOffice\org.openoffice.Office.Calc\Content\Update\Link";
+    private const string LibreOfficeWriterLinkPath = @"SOFTWARE\Policies\LibreOffice\org.openoffice.Office.Writer\Content\Update\Link";
 
     private static readonly IReadOnlyDictionary<string, string> NoSettings = new Dictionary<string, string>();
     private static readonly IReadOnlyDictionary<string, string> NoArguments = new Dictionary<string, string>();
@@ -424,7 +426,7 @@ public static class MeasureCatalog
         new MeasureId("LibreOfficeMacroSecurity"),
         "LibreOffice Macro Security",
         "LibreOffice Macro Security",
-        "No macro will run in LibreOffice any more, not even one from a document in a folder you have marked as trusted.",
+        "No macro will run in LibreOffice any more, not even one from a document in a folder you have marked as trusted. SecureURL is also cleared, which stops LibreOffice from treating remote documents as trusted.",
         Mechanism.RegistryString,
         RequiresElevation: true,
         HardenByDefault: false,
@@ -433,6 +435,8 @@ public static class MeasureCatalog
         [
             Sz(RegistryRoot.LocalMachine, LibreOfficeScriptingPath + @"\MacroSecurityLevel", "Value", "3"),
             Dword(RegistryRoot.LocalMachine, LibreOfficeScriptingPath + @"\MacroSecurityLevel", "Final", "1"),
+            Sz(RegistryRoot.LocalMachine, LibreOfficeScriptingPath + @"\SecureURL", "Value", ""),
+            Dword(RegistryRoot.LocalMachine, LibreOfficeScriptingPath + @"\SecureURL", "Final", "0"),
         ],
         NoConstraints,
         [LibreOfficeNotInstalled]);
@@ -475,7 +479,7 @@ public static class MeasureCatalog
         new MeasureId("LibreOfficeEnforceUpdateChecks"),
         "LibreOffice Enforce Update Checks",
         "LibreOffice Enforce Update Checks",
-        "LibreOffice will check for updates every day instead of every week, and you will be reminded about them in the background.",
+        "LibreOffice will check for updates every day instead of every week, and you will be reminded about them in the background. Note that the daily interval is written for parity with the Go tool, which records that this interval does not currently take effect through the registry and seems not to work in LibreOffice 7.5.4.",
         Mechanism.RegistryString,
         RequiresElevation: true,
         HardenByDefault: false,
@@ -484,6 +488,8 @@ public static class MeasureCatalog
         [
             Sz(RegistryRoot.LocalMachine, LibreOfficeUpdateCheckPath, "Value", "true"),
             Dword(RegistryRoot.LocalMachine, LibreOfficeUpdateCheckPath, "Final", "1"),
+            Sz(RegistryRoot.LocalMachine, LibreOfficeCheckIntervalPath, "Value", "86400"),
+            Dword(RegistryRoot.LocalMachine, LibreOfficeCheckIntervalPath, "Final", "1"),
         ],
         NoConstraints,
         [LibreOfficeNotInstalled]);
@@ -492,7 +498,7 @@ public static class MeasureCatalog
         new MeasureId("LibreOfficeDisableUpdateLinks"),
         "LibreOffice Disable Links",
         "LibreOffice Disable Updates from Links",
-        "When you open a LibreOffice Writer or Calc document that pulls values from another file, those values will not be loaded until you update the links yourself.",
+        "When you open a LibreOffice Writer or Calc document that pulls values from another file, those values will not be loaded until you update the links yourself. Note that LibreOffice honours this policy in Calc but not in Writer as of 7.5.4, so the Writer half is written for parity with the Go tool and may have no effect.",
         Mechanism.RegistryString,
         RequiresElevation: true,
         HardenByDefault: false,
@@ -501,6 +507,8 @@ public static class MeasureCatalog
         [
             Sz(RegistryRoot.LocalMachine, LibreOfficeCalcLinkPath, "Value", "1"),
             Dword(RegistryRoot.LocalMachine, LibreOfficeCalcLinkPath, "Final", "1"),
+            Sz(RegistryRoot.LocalMachine, LibreOfficeWriterLinkPath, "Value", "1"),
+            Dword(RegistryRoot.LocalMachine, LibreOfficeWriterLinkPath, "Final", "1"),
         ],
         NoConstraints,
         [LibreOfficeNotInstalled]);

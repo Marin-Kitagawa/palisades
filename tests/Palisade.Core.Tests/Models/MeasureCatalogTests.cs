@@ -69,7 +69,10 @@ public class MeasureCatalogTests
         {
             Assert.False(string.IsNullOrWhiteSpace(t.Path));
             Assert.False(string.IsNullOrWhiteSpace(t.ValueName));
-            Assert.False(string.IsNullOrWhiteSpace(t.HardenedValue));
+
+            // Not blank: `SecureURL` hardens to the empty string, which is a real hardened
+            // value and must stay distinguishable from a missing one.
+            Assert.NotNull(t.HardenedValue);
         });
     }
 
@@ -103,12 +106,50 @@ public class MeasureCatalogTests
     }
 
     [Fact]
-    public void LibreOffice_measures_are_not_all_classified_as_a_single_value_kind()
+    public void LibreOffice_SecureURL_hardens_to_the_empty_string()
     {
-        // Guards the inverse mistake: if someone "fixes" the mixed kinds by collapsing
-        // LibreOffice to one mechanism and dropping a target, this fails.
+        // libreoffice.go:44-51 writes `SecureURL` to the empty string; libreoffice.go:62-69
+        // then clears its `Final` flag to 0 so the user may still change it. The empty
+        // hardened value is what rules out encoding targets inside a settings string.
+        var macro = MeasureCatalog.All.Single(m => m.Id == new MeasureId("LibreOfficeMacroSecurity"));
+        Assert.Contains(macro.Targets, t =>
+            t.Path.EndsWith(@"\SecureURL", StringComparison.Ordinal)
+            && t.ValueName == "Value"
+            && t.Kind == "String"
+            && t.HardenedValue == string.Empty);
+        Assert.Contains(macro.Targets, t =>
+            t.Path.EndsWith(@"\SecureURL", StringComparison.Ordinal)
+            && t.ValueName == "Final"
+            && t.Kind == "Dword"
+            && t.HardenedValue == "0");
+    }
+
+    [Fact]
+    public void The_three_composite_LibreOffice_measures_keep_both_of_their_sub_measures()
+    {
+        // MacroSecurityLevel (+ SecureURL), AutoCheckEnabled (+ CheckInterval) and Calc Link
+        // (+ Writer Link) are each a Go `RegistryMultiValue` with two SZ and two DWORD
+        // entries, so each carries four targets across two policy paths. The other two
+        // LibreOffice measures write a single sub-measure and keep two targets.
         var libre = MeasureCatalog.All.Where(m => m.Group == MeasureGroup.LibreOffice).ToList();
-        Assert.All(libre, m => Assert.Equal(2, m.Targets.Count));
+        Assert.Equal(5, libre.Count);
+
+        var composite = libre.Where(m => m.Targets.Count == 4).ToList();
+        var single = libre.Where(m => m.Targets.Count == 2).ToList();
+        Assert.Equal(3, composite.Count);
+        Assert.Equal(2, single.Count);
+
+        Assert.All(composite, m =>
+        {
+            Assert.Equal(2, m.Targets.Select(t => t.Path).Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(2, m.Targets.Count(t => t.ValueName == "Value" && t.Kind == "String"));
+            Assert.Equal(2, m.Targets.Count(t => t.ValueName == "Final" && t.Kind == "Dword"));
+        });
+
+        var paths = string.Join("\n", composite.SelectMany(m => m.Targets).Select(t => t.Path));
+        Assert.Contains(@"\SecureURL", paths, StringComparison.Ordinal);
+        Assert.Contains(@"\CheckInterval", paths, StringComparison.Ordinal);
+        Assert.Contains(@"org.openoffice.Office.Writer\Content\Update\Link", paths, StringComparison.Ordinal);
     }
 
     [Fact]
