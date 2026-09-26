@@ -1,0 +1,62 @@
+<!--
+  Palisade Debloat — installed-app removal and temp-file deep clean (RyTuneX port).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Palisade.App.ViewModels"
+             x:Class="Palisade.App.Views.DebloatView"
+             x:DataType="vm:DebloatViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="28,20,28,16">
+
+    <Grid Grid.Row="0" ColumnDefinitions="*,260" Margin="0,0,0,12">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="pageTitle" Text="Debloat" />
+        <TextBlock Classes="secondary"
+                   Text="Uninstall apps and clear caches. Removal uses each app's own uninstaller; Store apps go through the Appx cmdlets. Microsoft Edge is deliberately not removable." />
+      </StackPanel>
+      <TextBox Grid.Column="1" PlaceholderText="Search installed apps"
+               Text="{Binding SearchText, Mode=TwoWay}" VerticalAlignment="Top" />
+    </Grid>
+
+    <Border Grid.Row="1" Background="{StaticResource LayerAltBrush}" CornerRadius="6" Padding="12,9"
+            BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1" Margin="0,0,0,12">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+        <CheckBox IsChecked="{Binding ShowUwp, Mode=TwoWay}" Content="Store apps" VerticalAlignment="Center" />
+        <CheckBox Grid.Column="1" IsChecked="{Binding ShowWin32, Mode=TwoWay}" Content="Win32 apps"
+                  VerticalAlignment="Center" Margin="16,0,0,0" />
+        <TextBlock Grid.Column="2" Classes="infoText secondary" Text="{Binding StatusLine}"
+                   TextWrapping="Wrap" VerticalAlignment="Center" Margin="16,0,0,0" />
+        <Button Grid.Column="3" Classes="subtle" Content="Reload" MinHeight="28" Padding="8,4"
+                Command="{Binding RefreshCommand}" VerticalAlignment="Center" />
+        <Button Grid.Column="4" Classes="accent" Content="Deep clean temp files" MinHeight="30"
+                Command="{Binding CleanTempCommand}" VerticalAlignment="Center" Margin="10,0,0,0" />
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Apps}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:DebloatAppViewModel">
+            <Border Classes="card" Margin="0,0,0,6" Padding="12,9">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Background="{StaticResource AccentSoftBrush}" CornerRadius="3" Padding="6,1"
+                        VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Type}" FontSize="11" Foreground="{StaticResource AccentTextBrush}" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                           Margin="10,0,0,0" TextWrapping="Wrap" />
+                <Button Grid.Column="2" Classes="subtle" Content="Uninstall" MinWidth="0" Padding="8,4"
+                        Foreground="{StaticResource ErrorBrush}"
+                        Command="{Binding $parent[ItemsControl].((vm:DebloatViewModel)DataContext).UninstallCommand}"
+                        CommandParameter="{Binding}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <TextBlock Grid.Row="3" Classes="secondary" Text="Removal is not reversible from Palisade — reinstall from the vendor or the Store if you change your mind." Margin="0,14,0,0" />
+  </Grid>
+</UserControl>

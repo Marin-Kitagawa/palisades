@@ -32,7 +32,7 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        if (args.Length != 1 || args[0] is not ("-harden" or "-restore" or "-detect" or "--help" or "-h"))
+        if (args.Length != 1 || args[0] is not ("-harden" or "-restore" or "-detect" or "-policies" or "--help" or "-h"))
         {
             PrintUsage();
             return 1;
@@ -60,6 +60,7 @@ internal static class Program
             "-harden" => engine.ReapplyDefaults(),
             "-restore" => engine.RestoreAll(),
             "-detect" => DetectWithTiming(engine),
+            "-policies" => ScanPolicies(),
             _ => throw new UnreachableException(),
         };
 
@@ -84,6 +85,21 @@ internal static class Program
             : "No restart required.");
 
         return report.Results.Any(r => r.Outcome == ApplyOutcome.Failed) ? 2 : 0;
+    }
+
+    private static ApplyReport? ScanPolicies()
+    {
+        var states = Palisade.Tuning.Policy.PolicyScanner.DetectPolicyStatesAsync().GetAwaiter().GetResult();
+        foreach (var state in states.OrderByDescending(s => s.IsConfigured))
+        {
+            if (!state.IsConfigured)
+            {
+                continue;
+            }
+            Console.WriteLine($"{state.Policy.Id,-40} CONFIGURED  {state.Policy.RegistryPath} · {state.Policy.ValueName} = {state.CurrentValue}");
+        }
+        Console.WriteLine($"{states.Count(s => s.IsConfigured)} of {states.Count} known policies configured.");
+        return null;
     }
 
     private static ApplyReport? DetectWithTiming(PalisadeEngine engine)

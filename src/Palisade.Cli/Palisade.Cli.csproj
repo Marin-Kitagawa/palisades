@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Palisade.Core\Palisade.Core.csproj" />
+    <ProjectReference Include="..\Palisade.Tuning\Palisade.Tuning.csproj" />
   </ItemGroup>
 
 </Project>

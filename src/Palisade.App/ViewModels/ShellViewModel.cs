@@ -55,6 +55,10 @@ public partial class ShellViewModel : ObservableObject
         [
             new NavItemViewModel("Palisade", "the 26 hardening measures", "\uE80F", () => new HardenView { DataContext = harden }),
             new NavItemViewModel("Optimize", "tuning toggles from RyTuneX", "\uEC4A", () => new OptimizeView { DataContext = new OptimizeViewModel() }),
+            new NavItemViewModel("Policies", "group policy scanner", "\uE8B7", () => new PoliciesView { DataContext = new PoliciesViewModel() }),
+            new NavItemViewModel("Startup", "startup entries", "\uE7E8", () => new StartupView { DataContext = new StartupViewModel() }),
+            new NavItemViewModel("Debloat", "apps and temp files", "\uE74D", () => new DebloatView { DataContext = new DebloatViewModel() }),
+            new NavItemViewModel("Repair", "DISM, SFC and CHKDSK", "\uE90F", () => new RepairView { DataContext = new RepairViewModel() }),
             new NavItemViewModel("About", "license and provenance", "\uE946", () => new AboutView { DataContext = new AboutViewModel() }),
         ];
         SelectedNav = Navigation[0];

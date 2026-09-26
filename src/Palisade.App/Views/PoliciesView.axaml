@@ -1,0 +1,67 @@
+<!--
+  Palisade Policies — group-policy scanner and reset (RyTuneX port). Fluent page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Palisade.App.ViewModels"
+             x:Class="Palisade.App.Views.PoliciesView"
+             x:DataType="vm:PoliciesViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="28,20,28,16">
+
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="pageTitle" Text="Policies" />
+        <TextBlock Classes="secondary"
+                   Text="Group Policy overrides (gpedit.msc) detected on this machine. Resetting deletes the registry value — the policy returns to Not Configured." />
+      </StackPanel>
+      <Button Grid.Column="1" Classes="accent" Content="Reset all configured" VerticalAlignment="Top"
+              Command="{Binding ResetAllCommand}" />
+    </Grid>
+
+    <Border Grid.Row="1" Background="{StaticResource LayerAltBrush}" CornerRadius="6" Padding="12,9"
+            BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1" Margin="0,0,0,12">
+      <Grid ColumnDefinitions="Auto,*">
+        <TextBlock Classes="navIcon" Text="&#xE946;" Foreground="{StaticResource AccentBrush}"
+                   VerticalAlignment="Center" Margin="0,0,10,0" />
+        <TextBlock Grid.Column="1" Classes="infoText secondary" Text="{Binding StatusLine}"
+                   TextWrapping="Wrap" VerticalAlignment="Center" />
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Rows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:PolicyRowViewModel">
+            <Border Classes="card" Margin="0,0,0,8" Opacity="{Binding IsConfigured, Converter={x:Static vm:BoolToFullOpacityConverter.Instance}}">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="3">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{Binding IsConfigured, Converter={x:Static vm:ConfiguredToBrushConverter.Instance}}" />
+                    <TextBlock Text="{Binding Name}" Classes="cardTitle" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Description}" Classes="secondary"
+                             FontSize="{StaticResource TypeCaption}" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding RegistryPath}" Classes="mono tertiary" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding CurrentValue}" Classes="mono"
+                             IsVisible="{Binding IsConfigured}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0"
+                        Content="Reset" MinWidth="90"
+                        IsVisible="{Binding IsConfigured}"
+                        Command="{Binding $parent[ItemsControl].((vm:PoliciesViewModel)DataContext).ResetCommand}"
+                        CommandParameter="{Binding}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
+      <TextBlock Classes="secondary" Text="Resetting a policy edits the registry; empty policy keys are cleaned up. Nothing here touches values outside Software\Policies." />
+      <Button Grid.Column="1" Classes="subtle" Content="Re-scan" Command="{Binding RefreshCommand}" />
+    </Grid>
+  </Grid>
+</UserControl>

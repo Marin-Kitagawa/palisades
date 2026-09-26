@@ -1,0 +1,68 @@
+<!--
+  Palisade Repair — DISM / SFC / CHKDSK workflow (RyTuneX port). Fluent page.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Palisade.App.ViewModels"
+             x:Class="Palisade.App.Views.RepairView"
+             x:DataType="vm:RepairViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="28,20,28,16">
+
+    <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,12">
+      <TextBlock Classes="pageTitle" Text="Repair" />
+      <TextBlock Classes="secondary"
+                 Text="Check and repair the Windows component store (DISM), system files (SFC) and the system drive (CHKDSK). Check first; repair only what it flags. Elevation is required." />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Spacing="8" Margin="0,0,0,12">
+      <ItemsControl ItemsSource="{Binding Rows}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:RepairRowViewModel">
+            <Border Classes="card" Margin="0,0,0,8" Padding="14,10">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                           Fill="{Binding Health, Converter={x:Static vm:HealthToBrushConverter.Instance}}" />
+                  <TextBlock Text="{Binding Name}" Classes="cardTitle" VerticalAlignment="Center" />
+                  <TextBlock Text="— Windows image" FontSize="12" VerticalAlignment="Center"
+                             Foreground="{StaticResource TextTertiaryBrush}"
+                             IsVisible="{Binding Name, Converter={x:Static vm:DismNameConverter.Instance}}" />
+                  <TextBlock Text="— System files" FontSize="12" VerticalAlignment="Center"
+                             Foreground="{StaticResource TextTertiaryBrush}"
+                             IsVisible="{Binding Name, Converter={x:Static vm:SfcNameConverter.Instance}}" />
+                  <TextBlock Text="— System drive" FontSize="12" VerticalAlignment="Center"
+                             Foreground="{StaticResource TextTertiaryBrush}"
+                             IsVisible="{Binding Name, Converter={x:Static vm:ChkdskNameConverter.Instance}}" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Classes="mono" Text="{Binding HealthWord}"
+                           VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <Border Grid.Row="2" Classes="card" Padding="0" Margin="0,0,0,12">
+      <TextBox IsReadOnly="True" Text="{Binding OutputText, Mode=OneWay}"
+               FontFamily="{StaticResource MonoFace}" FontSize="11.5"
+               MinHeight="220" MaxHeight="420"
+               BorderThickness="0" Background="Transparent"
+               TextWrapping="NoWrap" AcceptsReturn="True"
+               VerticalContentAlignment="Top" />
+    </Border>
+
+    <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,4,0,0">
+      <Button Classes="accent" Content="Check health" MinWidth="140" MinHeight="38"
+              Command="{Binding CheckCommand}" />
+      <Button Grid.Column="1" Classes="subtle" Content="Repair flagged" MinHeight="38" Margin="10,0,0,0"
+              Command="{Binding RepairCommand}" />
+      <TextBlock Grid.Column="3" Classes="secondary" Text="{Binding StatusLine}"
+                 TextWrapping="Wrap" VerticalAlignment="Center" />
+    </Grid>
+
+    <TextBlock Grid.Row="4" Classes="tertiary" FontSize="11" Margin="0,10,0,0"
+               Text="DISM and SFC write to system state only when repairing; CHKDSK /f is scheduled for the next restart, exactly as upstream schedules it. A full check-and-repair pass can take 15–30 minutes." />
+  </Grid>
+</UserControl>
