@@ -289,7 +289,13 @@ public class TestRegistryTests
         key.SetString("B", "3");
 
         Assert.Equal(new[] { "a", "B", "C" }, key.GetValueNames());
-        Assert.Equal(key.GetValueNames(), key.GetValueNames());
+
+        // The order is a property of the key, not of one handle: a second handle onto the
+        // same path agrees, and sees a value written through the first.
+        using var second = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: false)!;
+        second.SetString("D", "4");
+        Assert.Equal(new[] { "a", "B", "C", "D" }, second.GetValueNames());
+        Assert.Equal(new[] { "a", "B", "C", "D" }, key.GetValueNames());
     }
 
     [Fact]
@@ -321,7 +327,7 @@ public class TestRegistryTests
     }
 
     [Fact]
-    public void The_hive_answers_to_both_abstractions()
+    public void The_hive_answers_to_the_key_factory_abstraction()
     {
         IRegistryKeyFactory factory = new InMemoryRegistry();
         using var key = factory.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;

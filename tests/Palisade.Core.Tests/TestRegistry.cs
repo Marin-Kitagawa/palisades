@@ -29,9 +29,15 @@ public sealed class InMemoryRegistry : IRegistry, IRegistryKeyFactory
 {
     private readonly Dictionary<string, InMemoryEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// <c>writable</c> governs only whether an absent path is created on the spot. It is not
+    /// an access check, so a handle opened read-only can still be written through: the
+    /// plan's own Task 6 tests seed a hive through <c>writable: false</c> handles, and a
+    /// fake that threw there would fail them for a reason of its own making.
+    /// </summary>
     public IRegistryKey? OpenKey(RegistryRoot root, string subKey, bool writable)
     {
-        var path = Path(root, subKey);
+        var path = KeyPath(root, subKey);
         if (!_entries.TryGetValue(path, out var entry))
         {
             if (!writable)
@@ -52,7 +58,7 @@ public sealed class InMemoryRegistry : IRegistry, IRegistryKeyFactory
     /// lowercase elsewhere), so both dictionaries here compare with
     /// <see cref="StringComparer.OrdinalIgnoreCase"/>.
     /// </summary>
-    private static string Path(RegistryRoot root, string subKey) =>
+    private static string KeyPath(RegistryRoot root, string subKey) =>
         $"{RootKeyNames.ToToken(root)}\\{subKey}";
 
     /// <summary>The mutable value bag for one key path.</summary>
@@ -64,9 +70,9 @@ public sealed class InMemoryRegistry : IRegistry, IRegistryKeyFactory
 }
 
 /// <summary>
-/// One open key over an <see cref="InMemoryRegistry.InMemoryEntry"/>. Reads are a snapshot of
-/// the live bag, so a value written through a second handle for the same path is visible
-/// here immediately — the fake is the hive, not a copy of it.
+/// One open key over an <see cref="InMemoryRegistry.InMemoryEntry"/>. The handle holds the
+/// live value bag rather than a copy of it, so a value written through a second handle for
+/// the same path shows up here immediately: the fake is the hive, not a snapshot of it.
 /// </summary>
 public sealed class InMemoryRegistryKey(InMemoryRegistry.InMemoryEntry entry) : IRegistryKey
 {
