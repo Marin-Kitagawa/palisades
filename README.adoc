@@ -1,0 +1,297 @@
+= Palisade
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: highlight.js
+:imagesdir: graphics
+
+image:logo-final-256.png[Palisade logo,128,align=center]
+
+ifdef::badges[]
+image:https://img.shields.io/badge/license-GPLv3-blue.svg[License GPLv3,link=LICENSE.txt]
+image:https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4.svg[Windows 11 x64]
+image:https://img.shields.io/badge/tests-344%20passing-brightgreen.svg[Tests]
+endif::[]
+
+*Palisade — reversible hardening and system tuning for Windows 11.*
+
+Palisade reduces the Windows attack surface by disabling low-hanging-fruit features
+that are useless to regular users but are routinely abused to execute malicious
+code — Windows Script Host, Office macros and DDE, Adobe Reader JavaScript,
+PowerShell launching from Office documents, Recall, and more. On top of that it
+ships a complete tuning suite (the RyTuneX feature set): 100+ system toggles, a
+group-policy scanner, a startup manager, app debloating and a repair workflow.
+
+It is a C# / Avalonia port and continuation of
+https://hardentools.github.io[hardentools] by Security Without Borders, extended
+with the feature set of https://github.com/rayenghanmi/RyTuneX[RyTuneX].
+
+[IMPORTANT]
+====
+*Palisade is not an antivirus.* It does not identify, block or remove malware.
+It does not prevent software from being exploited. It does not prevent its own
+changes from being reverted by code that already runs with your privileges.
+It reduces the attack surface — nothing more, and it says so honestly.
+====
+
+'''
+image::palisade-fluent4.png[The Palisade hardening surface,align=center]
+
+== Why "Palisade"
+
+A palisade is a fence of pointed stakes: strong, simple, and — unlike a fortress —
+something you can *take down again stake by stake*. That is the whole product:
+
+* every change is **recorded** so it can be reverted **exactly**, byte-for-byte,
+  by Palisade or by the original hardentools;
+* changes are scoped to **the account that ran the tool** — never silently
+  machine-wide where avoidable;
+* every measure names its **cost** in your own applications ("complex Excel
+  calculations stop working"), instead of throwing abstract risk scores at you.
+
+== Features
+
+=== 1. Reversible hardening — the 26 measures
+
+The complete hardentools measure set, ported measure-for-measure from the Go
+original and verified against its source. Four states per measure:
+*hardened*, *not applied*, *changed externally* (something else touched the
+value — Palisade will not silently overwrite it), and *needs administrator*.
+
+[cols="1,2"]
+|===
+|Measure |What stops working when hardened
+
+|Windows Script Host
+|.vbs/.js/.wsf scripts and HTA files will not run.
+
+|Office OLE packages, macros, ActiveX, DDE
+|Embedded objects, macros and linked data in Excel/Word/PowerPoint documents
+stop working.
+
+|Adobe Reader JavaScript, embedded objects, protected mode/view, enhanced security
+|PDFs carrying scripts or embedded files open with those features off.
+
+|Show File Extensions
+|You start seeing `.exe` and `.doc` on every file in File Explorer.
+
+|OneNote block extensions
+|OneNote stops embedding arbitrary file types.
+
+|AutoRun / AutoPlay
+|CDs, DVDs and USB drives no longer start programs when inserted.
+
+|Disable PowerShell / cmd.exe
+|PowerShell and the command prompt will not start.
+
+|File associations
+|Double-clicking `.hta`, `.js`, `.jse`, `.WSH`, `.WSF`, `.scf`, `.scr`, `.vbs`,
+`.VBE`, `.pif` or `.mht` no longer opens them.
+
+|Windows ASR rules
+|14 Attack Surface Reduction rules block Office/Adobe/script-based malware
+patterns (requires Defender).
+
+|LSA Protection
+|Credential stealing from the LSASS process is blocked.
+
+|Defender PUA protection
+|Potentially unwanted applications get flagged.
+
+|LibreOffice macro security, Ctrl-Click hyperlinks, untrusted links,
+enforced update checks, update links
+|LibreOffice document security is tightened in five separate controls.
+
+|Recall
+|Windows Recall snapshots and AI fabric are removed.
+|===
+
+=== 2. Optimize — 106 tuning toggles
+
+The RyTuneX feature set, ported with its original commands and grouped by area:
+
+* *AI* — Windows AI features, Copilot removal, Recall
+* *Telemetry* — diagnostic services/CEIP tasks, Program Compatibility
+  Assistant, error reporting, activity feed, input personalization
+* *Privacy* — advertising ID, location, voice activation, settings/message/
+  clipboard sync, tailored experiences, Spotlight, Find My Device
+* *Updates* — four mutually exclusive Windows Update modes (defaults,
+  security-only, notify-first, disabled), Store suggested apps, driver
+  exclusion, OneDrive
+* *Explorer* — Quick Access history, Start menu ads, Windows Ink, My People,
+  taskbar End Task, link-resolve helpers, Cast to Device
+* *Performance* — foreground priority, NTFS tuning, service host splitting,
+  menu/mouse/keyboard latency, service timeouts, task timeouts
+* *Gaming / Power* — Game Mode, Game Bar + Game DVR, USB selective suspend,
+  power throttling, per-vendor GPU driver tweaks, hibernation
+* *Third-party* — Edge sidebar/telemetry/update tasks, Copilot, Visual
+  Studio, NVIDIA, Chrome and Firefox telemetry
+* *Security* — Remote Assistance, Remote Registry, biometrics, SmartScreen,
+  VBS/HVCI/Credential Guard (each clearly labelled with its security cost)
+
+Every toggle shows its **live applied state**, detected from the actual
+registry/service state — not just from a journal.
+
+=== 3. Policy scanner
+
+Detects which of **207 known Group Policies** (gpedit.msc) are configured on
+the machine, shows the exact registry path, value and type, and lets you reset
+any of them — or all at once — back to *Not Configured*. Verified against a
+live machine: the scanner correctly found 77 configured policies.
+
+=== 4. Startup manager
+
+Enumerates **everything that starts with your account** — HKCU/HKLM Run and
+RunOnce keys (64/32-bit), user and common startup folders, logon/boot
+scheduled tasks, UWP startup tasks and orphaned Task Manager entries — with
+publisher, impact estimate and one-click enable/disable through Task
+Manager's own marker scheme, plus full removal.
+
+=== 5. Debloat
+
+Lists all installed apps (Win32 from the uninstall registry, Store apps via
+Appx), uninstalls them through their own uninstallers or the Appx cmdlets,
+and runs a **deep temp-file clean**: update/search/font services stopped,
+driver caches, shader caches, OEM log trees, error reports, DNS and Winsock
+flushed — with a bytes-reclaimed estimate.
+
+=== 6. Repair
+
+The DISM → SFC → CHKDSK workflow: check the component store, verify system
+files, scan the system drive, see per-component health (healthy / needs
+attention), and repair only what is flagged (`/RestoreHealth`, `/scannow`,
+scheduled `chkdsk /f` at next reboot) — with the full tool output captured.
+
+=== 7. Dark mode
+
+A complete Fluent dark palette — not an inversion — with a persisted toggle
+in the navigation pane. Custom-drawn figures, state pills and dialogs all
+follow the theme.
+
+'''
+
+== The reversibility contract
+
+* Hardening writes are recorded under `HKCU\SOFTWARE\Security Without Borders\`
+  in a format **byte-compatible with the Go original**, so a machine hardened
+  by either tool restores with the other.
+* Restore replays the records in a **deterministic order** (constraint-aware,
+  stable across runs) — the same machine, the same order, every time.
+* Tuning toggles record what they applied under `HKCU\SOFTWARE\Palisade\Tuning`
+  and their live state is re-detected from the real registry on every launch.
+* A measure whose value was changed by something else is reported as
+  *changed externally* — Palisade **refuses to silently overwrite** it.
+
+== Download and run
+
+. Grab `Palisade-0.2.0-win-x64.zip` from the releases (or build from source).
+. Extract the folder anywhere.
+. Double-click `Palisade.exe`. No installer, no runtime prerequisites —
+  it ships self-contained.
+
+* Windows 11 x64 (Windows 10 1909+ generally works)
+* Administrator rights unlock 14 of the 26 measures; the rest work per-account
+* The CLI lives in `cli\Palisade.Cli.exe` for scripted or recovery use
+
+== Command line
+
+[cols="1,3"]
+|===
+|Option |Effect
+
+|`-harden`
+|Restore every applied measure to its recorded original, then apply the
+default hardening set. Exit code 0 on success, 2 if any measure failed.
+
+|`-restore`
+|Restore every measure recorded on this account to its original state.
+
+|`-detect`
+|Print the state of all 26 measures with per-measure timing.
+
+|`-policies`
+|Print every configured group policy override out of the 207 known ones.
+
+|`-h`
+|Usage.
+|===
+
+The GUI also accepts `--page <harden|optimize|policies|startup|debloat|repair|about>`
+to open a specific surface directly.
+
+== Building from source
+
+.Prerequisites
+* .NET SDK 10 (`net10.0-windows`)
+* Windows 11 (the UI targets Fluent; the libraries build on Windows only)
+
+[source,powershell]
+----
+git clone https://github.com/Marin-Kitagawa/palisades
+cd palisades
+dotnet build Palisade.slnx
+dotnet test                      # 344 tests, all offline/in-memory
+dotnet publish src/Palisade.App/Palisade.App.csproj -c Release -r win-x64 `
+  --self-contained true -p:PublishReadyToRun=true `
+  -p:DebugType=None -p:DebugSymbols=false -o release/Palisade
+----
+
+[NOTE]
+====
+No test ever touches the real registry: the entire engine runs against an
+in-memory hive behind an `IRegistry` abstraction, and `Microsoft.Win32.Registry`
+appears in exactly one source file (`RegistryAccess.cs`).
+====
+
+== Architecture
+
+[cols="1,2"]
+|===
+|Project |Role
+
+|`Palisade.Core`
+|The security-critical engine: 26 measures as data (`MeasureCatalog`), the
+registry abstraction and real adapter, byte-compatible saved state, five
+registry mechanisms + non-registry measures (ASR, Recall), four-state
+detection, deterministic restore planning, and the `PalisadeEngine` facade.
+References neither Avalonia nor the UI.
+
+|`Palisade.Tuning`
+|The RyTuneX port: 106 tuning options as data (verbatim upstream command
+lists), the command runner, state markers, live state detection, policy
+scanner (207 policies), startup manager, debloat/app removal, temp cleaner
+and the DISM/SFC/CHKDSK repair workflow. No WinUI/Avalonia/WinRT.
+
+|`Palisade.App`
+|The Avalonia 11-style Fluent UI: navigation shell, hardening cards with
+live state pills and toggles, detail rail with a blast-radius figure,
+policies/startup/debloat/repair surfaces, dark mode, dialogs and receipts.
+
+|`Palisade.Cli`
+|Console parity for machines where the GUI cannot start.
+
+|`tests/*`
+|344 tests across engine (237) and tuning (107), including per-measure
+detect/apply/restore coverage for all 26 measures and catalog integrity for
+all 106 toggles and 207 policies.
+|===
+
+== Attribution
+
+* *hardentools* by Claudio Guarnieri, Mariano Graziano and Florian Probst —
+  Security Without Borders (https://hardentools.github.io). Palisade is a port
+  of their Go project; the measure list, registry payloads and saved-state
+  format come from upstream, and its wiki documents every change in full.
+* *RyTuneX* (https://github.com/rayenghanmi/RyTuneX) for the tuning toggle
+  command sets, policy scanner data, startup enumeration and repair workflow.
+* Hammer→fence icon lineage: the original hardentools icon by Travis Avery
+  (Noun Project); the current logo is the reversible picket fence shown above.
+
+== License
+
+GPLv3 — see link:LICENSE.txt[]. Both parent projects are GPL-3.0, and every
+ported file carries dual attribution.
+
+ifndef::badges[]
+// badges rendered at top when supported
+endif::[]
