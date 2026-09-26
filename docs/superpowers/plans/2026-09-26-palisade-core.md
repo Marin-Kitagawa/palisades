@@ -220,12 +220,11 @@ public class MeasureCatalogTests
                 or Mechanism.NonRegistry),
             m => Assert.Empty(m.Targets));
 
-    [Theory]
-    [InlineData("Dword")]
-    [InlineData("String")]
-    [InlineData("MultiString")]
-    public void Every_target_kind_is_a_known_kind(string kind) =>
-        Assert.All(MeasureCatalog.All.SelectMany(m => m.Targets), t => Assert.Equal(kind, t.Kind));
+    [Fact]
+    public void Every_target_kind_is_a_known_kind() =>
+        Assert.All(
+            MeasureCatalog.All.SelectMany(m => m.Targets),
+            t => Assert.Contains(t.Kind, new[] { "Dword", "String", "MultiString" }));
 
     [Fact]
     public void Every_target_has_a_root_a_path_a_value_name_and_a_hardened_value()
@@ -234,8 +233,24 @@ public class MeasureCatalogTests
         {
             Assert.False(string.IsNullOrWhiteSpace(t.Path));
             Assert.False(string.IsNullOrWhiteSpace(t.ValueName));
-            Assert.False(string.IsNullOrWhiteSpace(t.HardenedValue));
+            // HardenedValue may legitimately be empty: `SecureURL\Value` hardens to the empty
+            // string (libreoffice.go:48). Assert non-null, not non-blank.
+            Assert.NotNull(t.HardenedValue);
         });
+    }
+
+    [Fact]
+    public void LibreOffice_SecureURL_hardens_to_the_empty_string()
+    {
+        // libreoffice.go:44-51 hardens `SecureURL\Value` to "". Any validation that rejects a
+        // blank hardened value silently drops this target, and any string-encoding of the
+        // payload cannot distinguish it from a missing one. This is the concrete case that
+        // ruled out encoding targets inside a settings string.
+        var macro = MeasureCatalog.All.Single(m => m.Group == MeasureGroup.LibreOffice
+            && m.Targets.Any(t => t.Path.Contains("MacroSecurityLevel", StringComparison.Ordinal)));
+        var secureUrl = Assert.Single(macro.Targets.Where(t => t.Path.Contains("SecureURL", StringComparison.Ordinal)));
+        Assert.Equal("String", secureUrl.Kind);
+        Assert.Equal(string.Empty, secureUrl.HardenedValue);
     }
 
     [Fact]
@@ -255,9 +270,9 @@ public class MeasureCatalogTests
     [Fact]
     public void All_five_LibreOffice_measures_pair_a_string_value_with_a_final_dword()
     {
-        // libreoffice.go:39 writes REG_SZ "Value" and libreoffice.go:57 writes REG_DWORD
-        // "Final" at the same policy path, so no single `Mechanism` value describes them —
-        // this is the case that forced the typed `Targets` list.
+        // Each LibreOffice sub-measure writes REG_SZ "Value" and REG_DWORD "Final" at the same
+        // policy path, so no single `Mechanism` value describes them — this is the case that
+        // forced the typed `Targets` list.
         var libre = MeasureCatalog.All.Where(m => m.Group == MeasureGroup.LibreOffice).ToList();
         Assert.Equal(5, libre.Count);
         Assert.All(libre, m =>
@@ -268,12 +283,29 @@ public class MeasureCatalogTests
     }
 
     [Fact]
-    public void LibreOffice_measures_are_not_all_classified_as_a_single_value_kind()
+    public void The_three_composite_LibreOffice_measures_keep_both_of_their_sub_measures()
     {
-        // Guards the inverse mistake: if someone "fixes" the mixed kinds by collapsing
-        // LibreOffice to one mechanism and dropping a target, this fails.
+        // Three of the five LibreOffice measures are themselves `RegistryMultiValue` bundles of
+        // two sub-measures, so they carry four targets, not two:
+        //   MacroSecurityLevel + SecureURL          (libreoffice.go:34-70)
+        //   AutoCheckEnabled + CheckInterval        (libreoffice.go:164-200)
+        //   Calc\Content\Update\Link + Writer\...   (libreoffice.go:216-252)
+        // The other two (HyperlinksWithCtrlClick, BlockUntrustedRefererLinks) are single
+        // sub-measures with two targets each. An earlier version of this test asserted a flat
+        // 2 for all five, which silently dropped SecureURL, CheckInterval and the Writer link —
+        // 6 registry values across 3 measures that Palisade would never harden or restore.
         var libre = MeasureCatalog.All.Where(m => m.Group == MeasureGroup.LibreOffice).ToList();
-        Assert.All(libre, m => Assert.Equal(2, m.Targets.Count));
+        var four = libre.Where(m => m.Targets.Count == 4).ToList();
+        var two = libre.Where(m => m.Targets.Count == 2).ToList();
+        Assert.Equal(3, four.Count);
+        Assert.Equal(2, two.Count);
+        Assert.Equal(5, four.Count + two.Count);
+
+        // The dropped payloads, named so their return is unambiguous.
+        Assert.All(four, m => Assert.Equal(2, m.Targets.Select(t => t.Path).Distinct().Count()));
+        Assert.Contains(four.SelectMany(m => m.Targets), t => t.Path.Contains("SecureURL", StringComparison.Ordinal));
+        Assert.Contains(four.SelectMany(m => m.Targets), t => t.Path.Contains("CheckInterval", StringComparison.Ordinal));
+        Assert.Contains(four.SelectMany(m => m.Targets), t => t.Path.Contains("Writer", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -304,7 +336,7 @@ One file per type, matching the File Structure table. `ToToken`/`TryParse` cover
 
 - [ ] **Step 4: Implement the 26 descriptors in `MeasureCatalog.cs`**
 
-Each descriptor is one static `readonly` field. Populate `Targets` from the Go source — **this is the step the plan originally got wrong, so read the Go file for every measure rather than assuming one value.** The four `RegistryMultiValue` measures (`show_file_extensions.go`, `autorun.go`, `uac.go`, `defender_pua.go`) get three targets each; the five LibreOffice measures get two each, an `REG_SZ "Value"` and an `REG_DWORD "Final"` (`libreoffice.go:39` and `libreoffice.go:57`); `office.go`'s DDE measure gets a target per sub-value. `Kind` is `"Dword"`, `"String"` or `"MultiString"` and drives the write, so LibreOffice needs no bespoke encoding. `Settings` carries only `"PathTemplate"`, `"OfficeVersions"`, `"AdobeVersions"` and `"Apps"`. `DisallowRun`, `FileAssociation` and `NonRegistry` measures have an empty `Targets` list.
+Each descriptor is one static `readonly` field. Populate `Targets` from the Go source — **this is the step the plan originally got wrong, so read the Go file for every measure rather than assuming one value.** The four `RegistryMultiValue` measures (`show_file_extensions.go`, `autorun.go`, `uac.go`, `defender_pua.go`) get three targets each. The five LibreOffice measures get **two or four** targets each, not a flat two: `HyperlinksWithCtrlClick` and `BlockUntrustedRefererLinks` are single sub-measures (2 each), while `MacroSecurity` (`MacroSecurityLevel` + `SecureURL`, `libreoffice.go:34-70`), `EnforceUpdateChecks` (`AutoCheckEnabled` + `CheckInterval`, `:164-200`) and `DisableUpdateLinks` (`Calc\Content\Update\Link` + `Writer\Content\Update\Link`, `:216-252`) are bundles of two sub-measures and get 4 each. Every LibreOffice sub-measure pairs an `REG_SZ "Value"` with an `REG_DWORD "Final"`, and `SecureURL\Value` hardens to the **empty string** (`:48`) — a blank `HardenedValue` is legitimate, not a missing one. `office.go`'s DDE measure gets a target per sub-value. `Kind` is `"Dword"`, `"String"` or `"MultiString"` and drives the write. `Settings` carries only `"PathTemplate"`, `"OfficeVersions"`, `"AdobeVersions"` and `"Apps"`. `DisallowRun`, `FileAssociation` and `NonRegistry` measures have an empty `Targets` list.
 
 Each descriptor is one static `readonly` field. The `Consequence` string is the display-size sentence naming what breaks in the user's own applications — for example `Cmd`'s is "You will not be able to open the Windows command prompt (cmd.exe) any more.", and `OfficeMacros`' is "Macros will not run in Excel, PowerPoint, or Word. Documents that rely on macros will not work."
 
@@ -511,10 +543,20 @@ public void Reports_an_unresolvable_name_with_a_warning_instead_of_guessing()
 [Fact]
 public void Non_registry_names_round_trip()
 {
-    var name = RegistryKeyNames.FormatNonReg(new MeasureId("Recall"));
-    Assert.Equal("SavedStateNonReg_Recall", name);
+    // Lowercase `recall` because that is what the Go tool persists (recall_feature.go:50).
+    var name = RegistryKeyNames.FormatNonReg(new MeasureId("recall"));
+    Assert.Equal("SavedStateNonReg_recall", name);
     Assert.True(RegistryKeyNames.TryParseNonReg(name, out var feature));
-    Assert.Equal("Recall", feature.Value);
+    Assert.Equal("recall", feature.Value);
+}
+
+[Fact]
+public void Non_registry_names_match_the_go_tools_spelling_exactly()
+{
+    // Guards the byte-compat surface: a capitalised id would round-trip fine but would not
+    // find the Go tool's `SavedStateNonReg_recall`.
+    Assert.Equal("SavedStateNonReg_recall", RegistryKeyNames.FormatNonReg(new MeasureId("recall")));
+    Assert.False(RegistryKeyNames.TryParseNonReg("SavedStateNonReg_Recall", out _));
 }
 ```
 
@@ -588,7 +630,7 @@ public void Writes_only_the_four_current_prefixes() // Global Constraints: never
     store.SaveDword(RegistryRoot.CurrentUser, @"Software\Foo", "Bar", 7);
     store.SaveString(RegistryRoot.CurrentUser, @"Software\Foo", "Baz", "x");
     store.SaveNotExisting(RegistryRoot.CurrentUser, @"Software\Foo", "Qux");
-    store.SaveNonReg(new MeasureId("Recall"), "disabled");
+    store.SaveNonReg(new MeasureId("recall"), "disabled");
 
     using var key = registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, true)!;
     Assert.All(key.GetValueNames(), n => Assert.DoesNotContain(RegistryKeyNames.LegacyPrefix, n));
@@ -630,11 +672,11 @@ public void Non_registry_state_round_trips_and_deletes()
 {
     var registry = new InMemoryRegistry();
     var store = new SavedStateStore(registry, RegistryOptions.Default);
-    store.SaveNonReg(new MeasureId("Recall"), "disabled");
-    Assert.True(store.TryGetNonReg(new MeasureId("Recall"), out var state));
+    store.SaveNonReg(new MeasureId("recall"), "disabled");
+    Assert.True(store.TryGetNonReg(new MeasureId("recall"), out var state));
     Assert.Equal("disabled", state);
-    store.DeleteNonReg(new MeasureId("Recall"));
-    Assert.False(store.TryGetNonReg(new MeasureId("Recall"), out _));
+    store.DeleteNonReg(new MeasureId("recall"));
+    Assert.False(store.TryGetNonReg(new MeasureId("recall"), out _));
 }
 ```
 
@@ -1184,7 +1226,7 @@ public void Reapply_defaults_leaves_no_measure_in_a_stressed_state()
     var report = engine.ReapplyDefaults();
     Assert.DoesNotContain(report.Results, r => r.Outcome == ApplyOutcome.Failed);
     var after = engine.Detect();
-    Assert.DoesNotContain(after, r => r.Id.Value == "Recall" && r.State == MeasureState.Stressed);
+    Assert.DoesNotContain(after, r => r.Id.Value == "recall" && r.State == MeasureState.Stressed);
 }
 
 [Fact]
