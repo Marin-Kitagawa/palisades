@@ -1,0 +1,1260 @@
+# Palisade Core Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build `Palisade.Core` — the complete, headless-testable hardening engine: 26 measures as data across six mechanisms, byte-compatible saved-state persistence, deterministic restore ordering, and a four-state detection model.
+
+**Architecture:** `Palisade.Core` has no Avalonia reference and contains every security-critical operation. All registry access is abstracted behind `IRegistryKeyFactory` so the entire engine is testable against an in-memory hive; **no test writes to the real registry.** Registry state is persisted in the upstream Go format under `HKCU\SOFTWARE\Security Without Borders\` so a machine hardened by either tool can be restored by the other. Restore order is computed from an explicit constraint graph rather than enumeration order.
+
+**Tech Stack:** C# / .NET 10 (`net10.0-windows`), `Microsoft.Win32.Registry` (in-box), xunit 2.9.3, Microsoft.NET.Test.Sdk 17.14.1, coverlet.collector 6.0.4. No MV toolkit, no DI container, no third-party registry library.
+
+**Spec:** `docs/superpowers/specs/2026-09-26-palisade-design.md`
+
+## Global Constraints
+
+- Target framework is exactly `net10.0-windows`. Nullable reference types enabled. Implicit usings enabled.
+- `Palisade.Core` must contain **no reference to Avalonia** and none to `Palisade.App` or `Palisade.Cli`.
+- License is GPLv3. Copy `LICENSE.txt` verbatim from `C:\Users\Ahri\Projects\hardentools\LICENSE.txt`. Every `.cs` file starts with the GPL header used upstream, retaining `Copyright (C) 2017-2023 Security Without Borders`.
+- `Palisade.Core` targets `net10.0-windows` because it calls `Microsoft.Win32.Registry` directly. `net10.0-windows` without `UseWindowsForms`/`UseWPF` keeps it a plain library with no UI framework.
+- Saved-state value names use the **four-underscore** separator (`____`) for all four current prefixes. The legacy `SavedState_` prefix uses a **single** underscore and is read-only.
+- Root key name tokens are exactly `CLASSES_ROOT`, `CURRENT_USER`, `LOCAL_MACHINE`, `USERS`, `CURRENT_CONFIG`, `PERFORMANCE_DATA`. No others are accepted.
+- The saved-state key path is exactly `SOFTWARE\Security Without Borders\`.
+- Measure count is exactly 26: 12 available without elevation, 14 requiring it.
+- Exactly 8 measures are `HardenByDefault == false`: `Cmd`, `Lsa`, `LibreOfficeMacroSecurity`, `LibreOfficeCtrlClickHyperlinks`, `LibreOfficeUntrustedRefererLinks`, `LibreOfficeEnforceUpdateChecks`, `LibreOfficeDisableUpdateLinks`, `Recall`.
+- No test in this project may open a real registry key. The in-memory hive is the only hive tests touch; this is enforced by the `IRegistry` abstraction, not by convention.
+- C# style follows the user's existing projects: file-scoped namespaces, primary constructors where they read better, `var` for obvious locals, no XML doc comments on private members.
+
+## Review Focus
+
+Five input classes the spec implies but no task's happy-path tests exercise. Each gets its test in the task that owns the code, named in that task's steps.
+
+1. **A saved-state value name containing a backslash in the value name** — a value literally named `a\b` is legal in the registry. Splitting on the first `\` pair is wrong; the key path may itself contain `\` and the separator is `____`, so splitting on `____` after the root token is the only correct parse.
+2. **A legacy `SavedState_` name whose key path contains underscores** — `_` is both the legacy separator and a legal key-path character, so the legacy split is genuinely ambiguous. It must be resolved against the known root token and validated, and an unresolvable name skipped, never guessed.
+3. **A measure applied by something else** — Group Policy, a corporate image, or another tool already set the value. `Detect` must return `Stressed`, never `Slack`, and `Apply` must not silently discard the pre-existing value.
+4. **A `SavedStateNotExisting_` entry whose target value has since been created** — restore must delete it (that is what was recorded) rather than leave it, and must report that it deleted a value the user had since created.
+5. **A registry `REG_MULTI_SZ` (DisallowRun) where another program added a different entry** — restore must remove only Palisade's entry and leave the other program alone, and must not delete the whole list.
+
+---
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `src/Palisade.Core/Palisade.Core.csproj` | Project file, no Avalonia |
+| `src/Palisade.Core/Models/MeasureState.cs` | The four-state enum |
+| `src/Palisade.Core/Models/MeasureGroup.cs` | Six measure groups |
+| `src/Palisade.Core/Models/Mechanism.cs` | The six mechanisms |
+| `src/Palisade.Core/Models/RegistryRoot.cs` | Six root tokens + name↔token mapping |
+| `src/Palisade.Core/Models/MeasureDescriptor.cs` | The descriptor record, `AvailabilityRule`, `MeasureConstraint` |
+| `src/Palisade.Core/Models/MeasureCatalog.cs` | The 26 descriptors as data + lookup by id/group |
+| `src/Palisade.Core/Registry/IRegistry.cs` | `IRegistry`, `IRegistryKey` — the abstraction every mechanism codes against |
+| `src/Palisade.Core/Registry/RegistryKeyNames.cs` | Parse/format the four current prefixes and the legacy prefix |
+| `src/Palisade.Core/Registry/SavedStateStore.cs` | Read and write saved state |
+| `src/Palisade.Core/Registry/RegistryAccess.cs` | The only file in the project that touches `Microsoft.Win32.Registry` |
+| `src/Palisade.Core/Registry/RegistryOptions.cs` | `RegistryOptions` (saved-state path) + `IAppPaths` |
+| `src/Palisade.Core/Mechanisms/IMechanismHandler.cs` | Handler contract |
+| `src/Palisade.Core/Mechanisms/RegistryDwordHandler.cs` | `RegistryDword`, `MultiRegistryDword` |
+| `src/Palisade.Core/Mechanisms/RegistryStringHandler.cs` | `RegistryString` |
+| `src/Palisade.Core/Mechanisms/VersionedPathHandler.cs` | `VersionedPath` + version discovery |
+| `src/Palisade.Core/Mechanisms/DisallowRunHandler.cs` | `DisallowRun` |
+| `src/Palisade.Core/Mechanisms/FileAssociationHandler.cs` | `FileAssociation` |
+| `src/Palisade.Core/Mechanisms/NonRegistryHandler.cs` | `NonRegistry` dispatch to an `INonRegistryMeasure` |
+| `src/Palisade.Core/Mechanisms/AsrRulesMeasure.cs` | ASR measure: rule set, Windows Defender detection |
+| `src/Palisade.Core/Mechanisms/RecallMeasure.cs` | Recall measure: feature presence, `SavedStateNonReg_` |
+| `src/Palisade.Core/Mechanisms/MEASURE_APPLICATIONS.md` | Versioned-path templates + root keys, read from here by the handler |
+| `src/Palisade.Core/Engine/MeasureDetector.cs` | Four-state derivation |
+| `src/Palisade.Core/Engine/RestorePlanner.cs` | Reverse-dependency ordering |
+| `src/Palisade.Core/Engine/ApplyEngine.cs` | Orchestrates apply/restore across measures |
+| `src/Palisade.Core/Engine/ApplyReport.cs` | Per-measure outcome records |
+| `src/Palisade.Core/PalisadeEngine.cs` | Public facade |
+| `tests/Palisade.Core.Tests/TestRegistry.cs` | In-memory hive + `IRegistry` fake |
+| `tests/Palisade.Core.Tests/…` | One test file per area, mirroring `src/` |
+
+Tests mirror the source layout so a reviewer can find the test for a file without a map.
+
+---
+
+## Task 1: Solution and project skeleton
+
+**Files:**
+- Create: `Palisade.slnx`, `src/Palisade.Core/Palisade.Core.csproj`, `tests/Palisade.Core.Tests/Palisade.Core.Tests.csproj`, `LICENSE.txt`, `README.md`
+
+**Interfaces:**
+- Produces: `Palisade.Core` class library and `Palisade.Core.Tests` test project, both building green on `net10.0-windows`. Every later task adds files to these two projects.
+
+- [ ] **Step 1: Create the solution and projects**
+
+```bash
+cd "C:/Users/Ahri/Documents/Default Project/Palisade"
+dotnet new sln -n Palisade --format slnx
+dotnet new classlib -n Palisade.Core -o src/Palisade.Core -f net10.0
+dotnet new xunit -n Palisade.Core.Tests -o tests/Palisade.Core.Tests -f net10.0
+dotnet sln Palisade.slnx add src/Palisade.Core/Palisade.Core.csproj tests/Palisade.Core.Tests/Palisade.Core.Tests.csproj
+dotnet add tests/Palisade.Core.Tests/Palisade.Core.Tests.csproj reference src/Palisade.Core/Palisade.Core.csproj
+```
+
+- [ ] **Step 2: Edit both `.csproj` files**
+
+`src/Palisade.Core/Palisade.Core.csproj` — set `<TargetFramework>net10.0-windows</TargetFramework>`, keep `Nullable` and `ImplicitUsings` enabled, delete the generated `Class1.cs`.
+
+`tests/Palisade.Core.Tests/Palisade.Core.Tests.csproj` — set `<TargetFramework>net10.0-windows</TargetFramework>`, and set package versions to exactly:
+
+```xml
+<PackageReference Include="coverlet.collector" Version="6.0.4" />
+<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+<PackageReference Include="xunit" Version="2.9.3" />
+<PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+```
+
+Add `<ItemGroup><Using Include="Xunit" /></ItemGroup>` if the template did not.
+
+- [ ] **Step 3: Copy the license and write attribution into the README**
+
+```bash
+Copy-Item "C:/Users/Ahri/Projects/hardentools/LICENSE.txt" ./LICENSE.txt
+```
+
+`README.md` must state, in the first paragraph: that Palisade is a C# port of `hardentools` by Claudio Guarnieri, Mariano Graziano, and Florian Probst of Security Without Borders; that it is GPLv3; and that it is **not an antivirus**.
+
+- [ ] **Step 4: Verify the build**
+
+Run: `dotnet build Palisade.slnx`
+Expected: build succeeded, two projects, zero warnings.
+
+Run: `dotnet test`
+Expected: one passing test (the template's). Confirms the test host works on `net10.0-windows`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "chore: scaffold Palisade.Core and test project"
+```
+
+---
+
+## Task 2: The measure model
+
+**Files:**
+- Create: `src/Palisade.Core/Models/MeasureState.cs`, `MeasureGroup.cs`, `Mechanism.cs`, `RegistryRoot.cs`, `MeasureDescriptor.cs`, `MeasureCatalog.cs`
+- Test: `tests/Palisade.Core.Tests/Models/MeasureCatalogTests.cs`
+
+**Interfaces:**
+- Produces, consumed by every later task:
+  - `public enum MeasureState { Slack, Taut, Stressed, Unavailable }`
+  - `public enum MeasureGroup { Windows, MicrosoftOffice, Adobe, LibreOffice, OneNote, System }`
+  - `public enum Mechanism { RegistryDword, RegistryString, VersionedPath, DisallowRun, FileAssociation, NonRegistry }`
+  - `public enum RegistryRoot { ClassesRoot, CurrentUser, LocalMachine, Users, CurrentConfig, PerformanceData }`
+  - `public static class RootKeyNames { public static string ToToken(RegistryRoot root); public static bool TryParse(string token, out RegistryRoot root); }` — `ToToken` returns the six exact tokens in Global Constraints; `TryParse` returns `false` for any other string.
+  - `public sealed record AvailabilityRule(string Kind, IReadOnlyDictionary<string, string> Arguments, string Reason);`
+  - `public sealed record MeasureConstraint(MeasureId Target, string Reason);`
+  - `public sealed record MeasureDescriptor(MeasureId Id, string Name, string LongName, string Consequence, Mechanism Mechanism, bool RequiresElevation, bool HardenByDefault, MeasureGroup Group, IReadOnlyDictionary<string, string> Settings, IReadOnlyList<MeasureConstraint> ConstrainedBy, IReadOnlyList<AvailabilityRule> Availability);`
+
+  **`Settings` is the mechanism payload** and is what makes a descriptor self-contained data rather than a type per measure. Reserved keys, all string-typed: `"HardenedValue"` (the `REG_DWORD` value, or the `REG_SZ` string), `"MultiValueName"` (the `REG_MULTI_SZ` value to manage instead of `HardenedValue`), `"PathTemplate"` (the versioned-path template), `"ValueName"`, `"OfficeVersions"`, `"AdobeVersions"`, `"Apps"` (comma-separated; a `MultiRegistryDword` sets `"MultiValueName"` to the executable name and omits the rest).`
+  - `public readonly record struct MeasureId(string Value);` with `public override string ToString() => Value;` and `public static implicit operator string(MeasureId id) => id.Value;` — the implicit operator exists so the saved-state feature names read cleanly, e.g. `saveHardenState(MeasureId.From("Recall"), "disabled")`.
+  - `public static class MeasureCatalog { public static IReadOnlyList<MeasureDescriptor> All { get; } public static MeasureDescriptor Get(MeasureId id); public static IReadOnlyList<MeasureDescriptor> InGroup(MeasureGroup group); }`
+
+**Note on `MeasureId`:** it wraps a string rather than an enum so that `SavedStateNonReg_` feature names stay byte-identical to the Go tool's. The `Value` strings for non-registry measures are exactly `Recall` and whatever Task 10 fixes for ASR, matched to `saveHardenState` call sites in the Go source.
+
+- [ ] **Step 1: Write the failing catalog tests**
+
+```csharp
+using Palisade.Core.Models;
+
+namespace Palisade.Core.Tests.Models;
+
+public class MeasureCatalogTests
+{
+    [Fact]
+    public void Catalog_contains_exactly_26_measures() =>
+        Assert.Equal(26, MeasureCatalog.All.Count);
+
+    [Fact]
+    public void Catalog_contains_exactly_12_measures_not_requiring_elevation() =>
+        Assert.Equal(12, MeasureCatalog.All.Count(m => !m.RequiresElevation));
+
+    [Fact]
+    public void Catalog_contains_exactly_14_measures_requiring_elevation() =>
+        Assert.Equal(14, MeasureCatalog.All.Count(m => m.RequiresElevation));
+
+    [Fact]
+    public void Catalog_contains_exactly_8_measures_not_hardened_by_default() =>
+        Assert.Equal(8, MeasureCatalog.All.Count(m => !m.HardenByDefault));
+
+    [Theory]
+    [InlineData("Cmd")]
+    [InlineData("Lsa")]
+    [InlineData("LibreOfficeMacroSecurity")]
+    [InlineData("LibreOfficeCtrlClickHyperlinks")]
+    [InlineData("LibreOfficeUntrustedRefererLinks")]
+    [InlineData("LibreOfficeEnforceUpdateChecks")]
+    [InlineData("LibreOfficeDisableUpdateLinks")]
+    [InlineData("Recall")]
+    public void Catalog_marks_the_eight_opt_in_measures_as_not_default(string id)
+    {
+        var descriptor = MeasureCatalog.Get(new MeasureId(id));
+        Assert.False(descriptor.HardenByDefault);
+    }
+
+    [Fact]
+    public void Every_measure_has_a_non_empty_consequence_sentence() =>
+        Assert.All(MeasureCatalog.All, m => Assert.False(string.IsNullOrWhiteSpace(m.Consequence)));
+
+    [Fact]
+    public void Every_measure_has_a_non_empty_availability_reason() =>
+        Assert.All(MeasureCatalog.All, m => Assert.All(m.Availability, r => Assert.False(string.IsNullOrWhiteSpace(r.Reason))));
+
+    [Fact]
+    public void Measure_ids_are_unique()
+    {
+        var ids = MeasureCatalog.All.Select(m => m.Id.Value).ToList();
+        Assert.Equal(ids.Count, ids.Distinct().Count());
+    }
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `dotnet test --filter "FullyQualifiedName~MeasureCatalogTests"`
+Expected: build failure — `MeasureCatalog` does not exist.
+
+- [ ] **Step 3: Implement the enums, records, and `RootKeyNames`**
+
+One file per type, matching the File Structure table. `ToToken`/`TryParse` cover exactly the six tokens; `TryParse` is `false` for everything else, including the empty string.
+
+- [ ] **Step 4: Implement the 26 descriptors in `MeasureCatalog.cs`**
+
+Each descriptor is one static `readonly` field. The `Consequence` string is the display-size sentence naming what breaks in the user's own applications — for example `Cmd`'s is "You will not be able to open the Windows command prompt (cmd.exe) any more.", and `OfficeMacros`' is "Macros will not run in Excel, PowerPoint, or Word. Documents that rely on macros will not work."
+
+Every measure carries at least one `AvailabilityRule`. Two are shared constants in the catalog: `"product_not_installed"` and `"product_not_installed"` is not enough for the measures with real runtime conditions — ASR carries `"windows_defender_disabled"`, `OfficeDDE` carries `"dde_not_supported"`. `Reason` on every rule is a full sentence, because the UI renders it verbatim.
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `dotnet test --filter "FullyQualifiedName~MeasureCatalogTests"`
+Expected: all pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: measure model and 26-measure catalog"
+```
+
+---
+
+## Task 3: The registry abstraction and the in-memory hive
+
+**Files:**
+- Create: `src/Palisade.Core/Registry/IRegistry.cs`, `RegistryOptions.cs`
+- Test: `tests/Palisade.Core.Tests/TestRegistry.cs`
+
+**Interfaces:**
+- Produces:
+  - `public enum RegistryValueKind { Dword, String, MultiString, Binary, None }`
+  - `public interface IRegistryKey : IDisposable { RegistryValueKind GetValueKind(string name); bool TryGetDword(string name, out uint value); bool TryGetString(string name, out string value); bool TryGetMultiString(string name, out string[] value); void SetDword(string name, uint value); void SetString(string name, string value); void SetMultiString(string name, IReadOnlyList<string> value); void DeleteValue(string name); IReadOnlyList<string> GetValueNames(); }`
+  - `public interface IRegistry { IRegistryKey OpenKey(RegistryRoot root, string subKey, bool writable); }` — `OpenKey` **returns `null`** when the key does not exist, and every caller must handle it. This is the single most important convention in the abstraction: "key absent" is normal state, not an error.
+  - `public interface IRegistryKeyFactory { IRegistryKey OpenKey(RegistryRoot root, string subKey, bool writable); }`
+  - `public sealed record RegistryOptions(string SavedStateKeyPath) { public const string DefaultSavedStateKeyPath = @"SOFTWARE\Security Without Borders\"; public static RegistryOptions Default { get; } = new(DefaultSavedStateKeyPath); }`
+  - `public interface IAppPaths { string LogDirectory { get; } }`
+  - `public sealed class AppPaths : IAppPaths { public AppPaths(string logDirectory); public string LogDirectory { get; } }`
+- Consumes: `RegistryRoot` from Task 2.
+
+**Why `IRegistryKeyFactory` on top of `IRegistry`:** `IRegistry` is the injected abstraction. `IRegistryKeyFactory` exists so `RegistryAccess` and the in-memory fake are interchangeable behind one constructor parameter, without every mechanism taking two dependencies.
+
+- [ ] **Step 1: Write the in-memory hive and its tests**
+
+`TestRegistry.cs` provides `InMemoryRegistry : IRegistry, IRegistryKeyFactory` and `InMemoryRegistryKey : IRegistryKey`, backed by `Dictionary<string, (RegistryValueKind Kind, object Value)>` per key path. `OpenKey` returns `null` for an absent path and creates the entry on first write when `writable` is `true`. A key is a path string, so parent keys need no separate creation.
+
+Tests live in `tests/Palisade.Core.Tests/TestRegistryTests.cs`:
+
+```csharp
+[Fact]
+public void OpenKey_returns_null_for_an_absent_key()
+{
+    IRegistry registry = new InMemoryRegistry();
+    Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\Nope", writable: false));
+}
+
+[Fact]
+public void Dword_round_trips()
+{
+    var registry = new InMemoryRegistry();
+    using var key = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
+    key.SetDword("V", 42);
+    Assert.True(key.TryGetDword("V", out var value));
+    Assert.Equal(42u, value);
+}
+
+[Fact]
+public void DeleteValue_removes_the_value()
+{
+    var registry = new InMemoryRegistry();
+    using var key = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
+    key.SetString("V", "x");
+    key.DeleteValue("V");
+    Assert.False(key.TryGetString("V", out _));
+}
+
+[Fact]
+public void GetValueNames_excludes_deleted_values()
+{
+    var registry = new InMemoryRegistry();
+    using var key = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
+    key.SetString("Keep", "x");
+    key.SetString("Drop", "y");
+    key.DeleteValue("Drop");
+    Assert.Equal(new[] { "Keep" }, key.GetValueNames());
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~TestRegistryTests"`
+Expected: build failure — `InMemoryRegistry` does not exist.
+
+- [ ] **Step 3: Implement `IRegistry.cs` and `RegistryOptions.cs`**
+
+Exactly the signatures above. `RegistryOptions.DefaultSavedStateKeyPath` is the verbatim constant from Global Constraints.
+
+- [ ] **Step 4: Implement the in-memory hive**
+
+`InMemoryRegistry` holds a single `Dictionary<string, InMemoryEntry>` keyed by `"{rootToken}\\{subKey}"`, where `InMemoryEntry` is the mutable value bag for that path. `OpenKey` with `writable: true` creates the entry on demand. `TryGet*` return `false` for an absent name **and** for a kind mismatch, so a `REG_SZ` read through `TryGetDword` fails rather than coercing.
+
+- [ ] **Step 5: Run to verify it passes**
+
+Run: `dotnet test --filter "FullyQualifiedName~TestRegistryTests"`
+Expected: all pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: registry abstraction and in-memory hive"
+```
+
+---
+
+## Task 4: Saved-state name parsing and formatting
+
+**Files:**
+- Create: `src/Palisade.Core/Registry/RegistryKeyNames.cs`
+- Test: `tests/Palisade.Core.Tests/Registry/RegistryKeyNamesTests.cs`
+
+**Interfaces:**
+- Consumes: `RegistryRoot`, `RootKeyNames` (Task 2).
+- Produces:
+  - `public static class RegistryKeyNames`
+    - `public const string NewDwordPrefix = "SavedStateNew_";`
+    - `public const string NewStringPrefix = "SavedStateNewSZ_";`
+    - `public const string NotExistingPrefix = "SavedStateNotExisting_";`
+    - `public const string NonRegPrefix = "SavedStateNonReg_";`
+    - `public const string LegacyPrefix = "SavedState_";`
+    - `public const string Separator = "____";`
+    - `public const string LegacySeparator = "_";`
+    - `public static string Format(RegistryRoot root, string keyPath, string valueName)`
+    - `public static string FormatNotExisting(RegistryRoot root, string keyPath, string valueName)`
+    - `public static bool TryParse(string valueName, out SavedStateKind kind, out RegistryRoot root, out string keyPath, out string targetValueName, out string? warning)`
+    - `public static string FormatNonReg(MeasureId feature)`
+    - `public static bool TryParseNonReg(string valueName, out MeasureId feature)`
+  - `public enum SavedStateKind { Dword, String, NotExisting, LegacyDword, LegacyString }`
+  - `public readonly record struct SavedStateEntry(SavedStateKind Kind, RegistryRoot Root, string KeyPath, string ValueName, string? Warning);`
+
+**The parse contract, which is the whole point of this task:** the four-underscore form is unambiguous, so `TryParse` splits the root token at the **first** `\` and the remainder at the **first** `____`. The legacy single-underscore form is genuinely ambiguous, because `_` is legal inside a key path, so `TryParse` resolves it by matching the longest known root token followed by `\` at the head of the remainder, then treats **everything after the next `_`** as the value name and the middle as the key path. If no root token matches at the head, the entry is unresolvable: `TryParse` returns `true` with `Warning` set to a sentence naming the value, so the caller can report it — and `Root` is then meaningless, which is why the caller must check `Warning` before using the entry.
+
+- [ ] **Step 1: Write the failing parse tests**
+
+```csharp
+[Fact]
+public void Formats_the_dword_name_with_four_underscores() =>
+    Assert.Equal(
+        @"SavedStateNew_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer____DisallowRun",
+        RegistryKeyNames.Format(RegistryRoot.CurrentUser,
+            @"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer", "DisallowRun"));
+
+[Fact]
+public void Round_trips_a_dword_name()
+{
+    Assert.True(RegistryKeyNames.TryParse(
+        @"SavedStateNew_LOCAL_MACHINE\Software\Foo\Bar____MyValue",
+        out var kind, out var root, out var keyPath, out var valueName, out var warning));
+    Assert.Equal(SavedStateKind.Dword, kind);
+    Assert.Equal(RegistryRoot.LocalMachine, root);
+    Assert.Equal(@"Software\Foo\Bar", keyPath);
+    Assert.Equal("MyValue", valueName);
+    Assert.Null(warning);
+}
+
+[Fact]
+public void Parses_a_value_name_that_contains_a_backslash() // Review Focus #1
+{
+    Assert.True(RegistryKeyNames.TryParse(
+        @"SavedStateNew_CURRENT_USER\Software\Foo____Bar\Baz",
+        out _, out _, out var keyPath, out var valueName, out _));
+    Assert.Equal(@"Software\Foo", keyPath);
+    Assert.Equal(@"Bar\Baz", valueName);
+}
+
+[Fact]
+public void Parses_a_legacy_name_with_single_underscore() // Review Focus #2
+{
+    Assert.True(RegistryKeyNames.TryParse(
+        @"SavedState_CURRENT_USER\Software\Foo_Bar",
+        out var kind, out var root, out var keyPath, out var valueName, out _));
+    Assert.Equal(SavedStateKind.LegacyDword, kind);
+    Assert.Equal(RegistryRoot.CurrentUser, root);
+    Assert.Equal(@"Software\Foo", keyPath);
+    Assert.Equal("Bar", valueName);
+}
+
+[Fact]
+public void Reports_a_legacy_name_whose_key_path_contains_underscores() // Review Focus #2
+{
+    Assert.True(RegistryKeyNames.TryParse(
+        @"SavedState_CURRENT_USER\Software\My_Foo_Bar",
+        out _, out _, out var keyPath, out var valueName, out _));
+    Assert.Equal(@"Software\My_Foo", keyPath);
+    Assert.Equal("Bar", valueName);
+}
+
+[Fact]
+public void Reports_an_unresolvable_name_with_a_warning_instead_of_guessing()
+{
+    Assert.True(RegistryKeyNames.TryParse(
+        "SavedStateNew_NOT_A_ROOT\Software\Foo____Bar",
+        out _, out _, out _, out _, out var warning));
+    Assert.NotNull(warning);
+    Assert.Contains("NOT_A_ROOT", warning);
+}
+
+[Fact]
+public void Non_registry_names_round_trip()
+{
+    var name = RegistryKeyNames.FormatNonReg(new MeasureId("Recall"));
+    Assert.Equal("SavedStateNonReg_Recall", name);
+    Assert.True(RegistryKeyNames.TryParseNonReg(name, out var feature));
+    Assert.Equal("Recall", feature.Value);
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~RegistryKeyNamesTests"`
+Expected: build failure — `RegistryKeyNames` does not exist.
+
+- [ ] **Step 3: Implement `RegistryKeyNames.cs`**
+
+`Format` and `FormatNotExisting` are pure string composition. `TryParse` dispatches on the longest matching prefix first — check `NewStringPrefix` before `NewDwordPrefix` before `NotExistingPrefix` before `LegacyPrefix`, because `SavedStateNewSZ_` and `SavedStateNew_` are both prefixes-adjacent and a naive `StartsWith` on the shorter one would mis-slice the longer.
+
+For the legacy branch, take `remainder` after the prefix; find the root token by testing all six tokens for a match at position 0 followed by `\`; strip it and the `\`; then find the **first** `_` in what is left and split there. Everything after is the value name. If no root token matches, set `Warning` and return `true`.
+
+`TryParseNonReg` returns `false` for anything not starting with `NonRegPrefix` or with an empty feature name after it.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `dotnet test --filter "FullyQualifiedName~RegistryKeyNamesTests"`
+Expected: all pass, including the three Review Focus cases.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: saved-state name parsing with guarded legacy handling"
+```
+
+---
+
+## Task 5: `SavedStateStore`
+
+**Files:**
+- Create: `src/Palisade.Core/Registry/SavedStateStore.cs`
+- Test: `tests/Palisade.Core.Tests/Registry/SavedStateStoreTests.cs`
+
+**Interfaces:**
+- Consumes: `IRegistryKeyFactory`, `RegistryOptions`, `RegistryKeyNames`, `SavedStateEntry`, `MeasureId` (Tasks 2–4).
+- Produces:
+  - `public sealed class SavedStateStore(IRegistryKeyFactory registry, RegistryOptions options)`
+    - `public void SaveDword(RegistryRoot root, string keyPath, string valueName, uint originalValue)`
+    - `public void SaveString(RegistryRoot root, string keyPath, string valueName, string originalValue)`
+    - `public void SaveNotExisting(RegistryRoot root, string keyPath, string valueName)`
+    - `public void SaveNonReg(MeasureId feature, string state)`
+    - `public IReadOnlyList<SavedStateEntry> ReadAll()`
+    - `public bool TryGetNonReg(MeasureId feature, out string state)`
+    - `public void DeleteNonReg(MeasureId feature)`
+    - `public void Clear()`
+
+- [ ] **Step 1: Write the failing round-trip tests**
+
+```csharp
+[Fact]
+public void Saves_and_reads_back_a_dword_entry()
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    store.SaveDword(RegistryRoot.CurrentUser, @"Software\Foo", "Bar", 7);
+
+    var entry = Assert.Single(store.ReadAll());
+    Assert.Equal(SavedStateKind.Dword, entry.Kind);
+    Assert.Equal(@"Software\Foo", entry.KeyPath);
+    Assert.Equal("Bar", entry.ValueName);
+}
+
+[Fact]
+public void Writes_only_the_four_current_prefixes() // Global Constraints: never write legacy
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    store.SaveDword(RegistryRoot.CurrentUser, @"Software\Foo", "Bar", 7);
+    store.SaveString(RegistryRoot.CurrentUser, @"Software\Foo", "Baz", "x");
+    store.SaveNotExisting(RegistryRoot.CurrentUser, @"Software\Foo", "Qux");
+    store.SaveNonReg(new MeasureId("Recall"), "disabled");
+
+    using var key = registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, true)!;
+    Assert.All(key.GetValueNames(), n => Assert.DoesNotContain(RegistryKeyNames.LegacyPrefix, n));
+    Assert.Contains(key.GetValueNames(), n => n.StartsWith(RegistryKeyNames.NewDwordPrefix));
+    Assert.Contains(key.GetValueNames(), n => n.StartsWith(RegistryKeyNames.NewStringPrefix));
+    Assert.Contains(key.GetValueNames(), n => n.StartsWith(RegistryKeyNames.NotExistingPrefix));
+    Assert.Contains(key.GetValueNames(), n => n.StartsWith(RegistryKeyNames.NonRegPrefix));
+}
+
+[Fact]
+public void Reads_a_legacy_entry_written_by_the_go_tool()
+{
+    var registry = new InMemoryRegistry();
+    using (var key = registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, true)!)
+    {
+        key.SetDword(@"SavedState_CURRENT_USER\Software\Foo_Bar", 3);
+    }
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var entry = Assert.Single(store.ReadAll());
+    Assert.Equal(SavedStateKind.LegacyDword, entry.Kind);
+    Assert.Equal(@"Software\Foo", entry.KeyPath);
+}
+
+[Fact]
+public void Reports_a_malformed_entry_rather_than_dropping_it_silently()
+{
+    var registry = new InMemoryRegistry();
+    using (var key = registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, true)!)
+    {
+        key.SetDword("SavedStateNew_NOPE\Software\Foo____Bar", 1);
+    }
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var entry = Assert.Single(store.ReadAll());
+    Assert.NotNull(entry.Warning);
+}
+
+[Fact]
+public void Non_registry_state_round_trips_and_deletes()
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    store.SaveNonReg(new MeasureId("Recall"), "disabled");
+    Assert.True(store.TryGetNonReg(new MeasureId("Recall"), out var state));
+    Assert.Equal("disabled", state);
+    store.DeleteNonReg(new MeasureId("Recall"));
+    Assert.False(store.TryGetNonReg(new MeasureId("Recall"), out _));
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~SavedStateStoreTests"`
+Expected: build failure — `SavedStateStore` does not exist.
+
+- [ ] **Step 3: Implement `SavedStateStore`**
+
+`Save*` open the saved-state key with `writable: true` and write one value. Values written are: `Dword` and `NotExisting` as `SetDword` (matching Go — `SavedStateNotExisting_` is a `REG_DWORD` holding 0), `String` and `NonReg` as `SetString`.
+
+`ReadAll` opens the key read-only; if it is `null`, return an empty list. For each name, classify: `NewStringPrefix` → try string; `NewDwordPrefix` → try dword; `NotExistingPrefix` → try dword; `LegacyPrefix` → try dword then string, producing `LegacyDword` or `LegacyString`. Anything that does not start with a known prefix is skipped entirely — it is not ours. Entries that start with a known prefix but fail to parse are returned with `Warning` set, never dropped.
+
+`ReadAll` must open the key `using` and enumerate inside the `using`.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `dotnet test --filter "FullyQualifiedName~SavedStateStoreTests"`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: saved-state store with Go-format compatibility"
+```
+
+---
+
+## Task 6: The five registry mechanisms
+
+**Files:**
+- Create: `src/Palisade.Core/Mechanisms/IMechanismHandler.cs`, `RegistryDwordHandler.cs`, `RegistryStringHandler.cs`, `DisallowRunHandler.cs`, `FileAssociationHandler.cs`
+- Test: `tests/Palisade.Core.Tests/Mechanisms/RegistryMechanismTests.cs`
+
+**Interfaces:**
+- Consumes: `IRegistryKeyFactory`, `SavedStateStore`, `RegistryRoot`, `MeasureId` (Tasks 2–5).
+- Produces:
+  - `public sealed record MechanismTarget(RegistryRoot Root, string KeyPath, string ValueName, string? MultiValueName);`
+  - `public interface IMechanismHandler`
+    - `Mechanism Mechanism { get; }`
+    - `IReadOnlyList<MechanismTarget> ResolveTargets(MeasureDescriptor descriptor, IVersionResolver versions);`
+    - `MeasureState Detect(MeasureDescriptor descriptor, IReadOnlyList<MechanismTarget> targets, IRegistryKeyFactory registry);`
+    - `void Apply(MeasureDescriptor descriptor, IReadOnlyList<MechanismTarget> targets, IRegistryKeyFactory registry, SavedStateStore store);`
+    - `void Restore(MeasureDescriptor descriptor, IReadOnlyList<MechanismTarget> targets, IRegistryKeyFactory registry, SavedStateStore store);`
+  - `public interface IVersionResolver { IReadOnlyList<string> ResolveOfficeVersions(); IReadOnlyList<string> ResolveAdobeVersions(); }` — `VersionedPathHandler` codes against this so version discovery is testable and swappable; Task 7 supplies the real one.
+  - Test helper, created in `tests/Palisade.Core.Tests/StubVersionResolver.cs` by this task because Task 6's tests need it: `public sealed class StubVersionResolver(IReadOnlyList<string>? officeVersions = null, IReadOnlyList<string>? adobeVersions = null) : IVersionResolver` — the parameterless call returns empty lists, which is what the `RegistryDword` tests want since those measures are not versioned.
+
+**`MultiValueName` is how `MultiRegistryDword` works:** it is `null` for a single-value target. When set, the target's `ValueName` is ignored and the handler manages that `REG_MULTI_SZ` list instead — this is the `DisallowRun` list and the `Autorun` list.
+
+- [ ] **Step 1: Write the failing mechanism tests**
+
+```csharp
+[Fact]
+public void Dword_detects_slack_when_the_value_is_at_its_original() // Review Focus #3
+{
+    var registry = new InMemoryRegistry();
+    var descriptor = MeasureCatalog.Get(new MeasureId("Lsa"));
+    using (var key = registry.OpenKey(RegistryRoot.LocalMachine, @"System\CurrentControlSet\Control\Lsa", false)!)
+    {
+        key.SetDword("RunAsPPL", 0);
+    }
+    var handler = new RegistryDwordHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+    Assert.Equal(MeasureState.Slack, handler.Detect(descriptor, targets, registry));
+}
+
+[Fact]
+public void Dword_detects_taut_after_apply()
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("Lsa"));
+    var handler = new RegistryDwordHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+
+    handler.Apply(descriptor, targets, registry, store);
+    Assert.Equal(MeasureState.Taut, handler.Detect(descriptor, targets, registry));
+
+    handler.Restore(descriptor, targets, registry, store);
+    Assert.Equal(MeasureState.Slack, handler.Detect(descriptor, targets, registry));
+}
+
+[Fact]
+public void Dword_detects_stressed_when_something_else_set_the_value_first() // Review Focus #3
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("Lsa"));
+    using (var key = registry.OpenKey(RegistryRoot.LocalMachine, @"System\CurrentControlSet\Control\Lsa", true)!)
+    {
+        key.SetDword("RunAsPPL", 1); // Group Policy, not us.
+    }
+    var handler = new RegistryDwordHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+    Assert.Equal(MeasureState.Stressed, handler.Detect(descriptor, targets, registry));
+}
+
+[Fact]
+public void Applying_over_a_stressed_value_preserves_the_preexisting_value() // Review Focus #3
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("Lsa"));
+    using (var key = registry.OpenKey(RegistryRoot.LocalMachine, @"System\CurrentControlSet\Control\Lsa", true)!)
+    {
+        key.SetDword("RunAsPPL", 1);
+    }
+    var handler = new RegistryDwordHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+    handler.Apply(descriptor, targets, registry, store);
+
+    handler.Restore(descriptor, targets, registry, store);
+    using var key = registry.OpenKey(RegistryRoot.LocalMachine, @"System\CurrentControlSet\Control\Lsa", false)!;
+    Assert.True(key.TryGetDword("RunAsPPL", out var restored));
+    Assert.Equal(1u, restored); // The pre-existing 1, not 0.
+}
+
+[Fact]
+public void NotExisting_restore_deletes_a_value_created_after_hardening() // Review Focus #4
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("Lsa"));
+    var handler = new RegistryDwordHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+
+    store.SaveNotExisting(RegistryRoot.LocalMachine, @"System\CurrentControlSet\Control\Lsa", "RunAsPPL");
+    using (var key = registry.OpenKey(RegistryRoot.LocalMachine, @"System\CurrentControlSet\Control\Lsa", true)!)
+    {
+        key.SetDword("RunAsPPL", 5); // Created after we recorded "did not exist".
+    }
+
+    handler.Restore(descriptor, targets, registry, store);
+    using var check = registry.OpenKey(RegistryRoot.LocalMachine, @"System\CurrentControlSet\Control\Lsa", false)!;
+    Assert.False(check.TryGetDword("RunAsPPL", out _));
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~RegistryMechanismTests"`
+Expected: build failure — handlers do not exist.
+
+- [ ] **Step 3: Implement `IMechanismHandler` and the three registry-value handlers**
+
+`RegistryDwordHandler.Mechanism` is `Mechanism.RegistryDword`. `Apply` on a `REG_DWORD` target: read the current value; if the key is absent or the value is absent, call `store.SaveNotExisting`; else call `store.SaveDword` with the current value; then `SetDword(descriptor's hardened value)`. The hardened value comes from the descriptor's mechanism-specific payload, so add to `MeasureDescriptor` a `IReadOnlyDictionary<string, string> Settings` carrying the hardened value, the multi-value name, and the Office/Adobe version and app lists. Name it explicitly in the descriptor; do not hide it in a side dictionary keyed by a string the plan has not fixed.
+
+`Restore` on a `REG_DWORD` target: look up the saved entry by root/key/value. `Dword` → `SetDword` the saved value. `NotExisting` → `DeleteValue`. `LegacyDword` → `SetDword` the legacy value. No saved entry → do nothing, and record nothing. **Never** write a legacy-format name.
+
+`RegistryStringHandler` is the same with `TryGetString`/`SetString` and `SavedStateKind.String`.
+
+`Detect` for a single-value target returns: `Taut` if the current value equals the hardened value; `Slack` if it equals the original recorded in the store, or the key/value is absent; `Stressed` if it is something else. A target list with more than one member is `Taut` only if **every** member is `Taut`, `Stressed` if any member is `Stressed` and none is `Taut`, otherwise `Slack`.
+
+- [ ] **Step 4: Implement `DisallowRunHandler` and `FileAssociationHandler`**
+
+`DisallowRunHandler.ResolveTargets` returns one target with `ValueName` set to `"1"` (the `DisallowRun` enabling flag) and `MultiValueName` set to the executable name. `Apply` writes `1` to the flag after recording the flag's original state, then reads the current list, appends the executable if absent, and writes it back. `Restore` removes **only** that executable from the list and leaves every other entry, then restores the flag's original state. This is Review Focus #5 — the test asserting that another program's entry survives restore is in this task.
+
+`FileAssociationHandler` works against `HKCU\SOFTWARE\Classes` and restricts which ProgIDs may open each extension. The exact per-extension restriction table is the longest piece of hand-authored data in the project; put it in a single `FileAssociationTable` static class inside `FileAssociationHandler.cs` and keep it flat.
+
+- [ ] **Step 5: Add the tests for Review Focus #4 and #5, then run everything**
+
+Run: `dotnet test`
+Expected: all pass, no test touching a real registry.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: registry, string, DisallowRun and file-association mechanisms"
+```
+
+---
+
+## Task 7: Versioned paths and `VersionedPathHandler`
+
+**Files:**
+- Create: `src/Palisade.Core/Mechanisms/VersionedPathHandler.cs`, `MEASURE_APPLICATIONS.md`
+- Test: `tests/Palisade.Core.Tests/Mechanisms/VersionedPathTests.cs`
+
+**Interfaces:**
+- Consumes: `IMechanismHandler`, `IVersionResolver`, `SavedStateStore`, `MeasureDescriptor.Settings` (Task 6).
+- Produces:
+  - `public sealed class InstalledVersionResolver(IRegistryKeyFactory registry) : IVersionResolver` — enumerates installed Office and Adobe version directories under `%ProgramFiles%` and `%ProgramFiles(x86)%` and returns only the versions actually present. Returns an empty list when the directory is absent, which the handler reports as a failure rather than a silent success.
+  - `public sealed record PathResolutionResult(IReadOnlyList<MechanismTarget> Targets, IReadOnlyList<string> Failures);`
+  - `public sealed class VersionedPathHandler { public PathResolutionResult Resolve(MeasureDescriptor descriptor, IVersionResolver versions); }` plus the three `IMechanismHandler` members, where `Detect`/`Apply`/`Restore` operate on `Resolve(...).Targets` and a non-empty `Failures` list makes `Detect` return `Unavailable`.
+
+- [ ] **Step 1: Write the failing versioned-path tests**
+
+```csharp
+[Fact]
+public void Expands_one_target_per_installed_version_and_app()
+{
+    var resolver = new StubVersionResolver(officeVersions: new[] { "16.0" }, adobeVersions: Array.Empty<string>());
+    var descriptor = MeasureCatalog.Get(new MeasureId("OfficeMacros"));
+    var result = new VersionedPathHandler().Resolve(descriptor, resolver);
+    Assert.Equal(new[] { "Excel", "PowerPoint", "Word" }.Length, result.Targets.Count);
+    Assert.All(result.Targets, t => Assert.Contains(@"16.0", t.KeyPath));
+}
+
+[Fact]
+public void Reports_a_failure_when_no_version_resolves() // spec defect #9
+{
+    var resolver = new StubVersionResolver(officeVersions: Array.Empty<string>(), adobeVersions: Array.Empty<string>());
+    var descriptor = MeasureCatalog.Get(new MeasureId("OfficeMacros"));
+    var result = new VersionedPathHandler().Resolve(descriptor, resolver);
+    Assert.Empty(result.Targets);
+    Assert.NotEmpty(result.Failures);
+}
+
+[Fact]
+public void Detects_unavailable_when_nothing_resolved()
+{
+    var resolver = new StubVersionResolver(officeVersions: Array.Empty<string>(), adobeVersions: Array.Empty<string>());
+    var descriptor = MeasureCatalog.Get(new MeasureId("OfficeMacros"));
+    var handler = new VersionedPathHandler();
+    var result = handler.Resolve(descriptor, resolver);
+    Assert.Equal(MeasureState.Unavailable, handler.Detect(descriptor, result.Targets, new InMemoryRegistry()));
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~VersionedPathTests"`
+Expected: build failure — `VersionedPathHandler` does not exist.
+
+- [ ] **Step 3: Write `MEASURE_APPLICATIONS.md`**
+
+The authoritative table, transcribed from the Go source, giving for each versioned measure its template, root key, value name, hardened value, version list source, and app list. Each entry cites the Go file and line it came from. Include the upstream version lists verbatim for comparison: `standardOfficeVersions = {12.0, 14.0, 15.0, 16.0}`, `standardAdobeVersions = {DC, 2020, XI}`, `standardOfficeApps = {Excel, PowerPoint, Word}`.
+
+- [ ] **Step 4: Implement `VersionedPathHandler` and `InstalledVersionResolver`**
+
+`Resolve` reads the template, version list, and app list from `descriptor.Settings`, enumerates the cross product, and returns one `MechanismTarget` per combination. It does **not** check whether the resulting registry key exists — that is `Detect`'s job, and conflating the two is what makes the Go tool report success on a machine with a version it does not know.
+
+`InstalledVersionResolver` enumerates directory names under the Office and Adobe install roots, matching the shape the templates expect, and returns the distinct version tokens found.
+
+- [ ] **Step 5: Run to verify it passes**
+
+Run: `dotnet test --filter "FullyQualifiedName~VersionedPathTests"`
+Expected: all pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: versioned-path expansion with discovered versions"
+```
+
+---
+
+## Task 8: `NonRegistry` measures — ASR and Recall
+
+**Files:**
+- Create: `src/Palisade.Core/Mechanisms/NonRegistryHandler.cs`, `AsrRulesMeasure.cs`, `RecallMeasure.cs`
+- Test: `tests/Palisade.Core.Tests/Mechanisms/NonRegistryTests.cs`
+
+**Interfaces:**
+- Consumes: `IMechanismHandler`, `SavedStateStore`, `IRegistryKeyFactory` (Tasks 3–6).
+- Produces:
+  - `public interface INonRegistryMeasure`
+    - `MeasureId Id { get; }`
+    - `IReadOnlyList<AvailabilityRule> Availability { get; }`
+    - `bool IsAvailable();`
+    - `MeasureState Detect(SavedStateStore store);`
+    - `void Apply(SavedStateStore store);`
+    - `void Restore(SavedStateStore store);`
+  - `public sealed class AsrRulesMeasure(IRegistryKeyFactory registry) : INonRegistryMeasure`
+  - `public sealed class RecallMeasure(IRegistryKeyFactory registry) : INonRegistryMeasure`
+  - `public sealed class NonRegistryHandler(IReadOnlyDictionary<MeasureId, INonRegistryMeasure> measures) : IMechanismHandler`
+
+- [ ] **Step 1: Write the failing tests**
+
+```csharp
+[Fact]
+public void Recall_is_unavailable_when_the_feature_is_absent_from_the_build()
+{
+    var registry = new InMemoryRegistry();
+    var measure = new RecallMeasure(registry);
+    Assert.False(measure.IsAvailable());
+}
+
+[Fact]
+public void Recall_applies_and_restores_via_non_reg_state()
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var measure = new RecallMeasure(registry);   // Stubbed present by seeding the feature key.
+    measure.Apply(store);
+    Assert.Equal(MeasureState.Taut, measure.Detect(store));
+    measure.Restore(store);
+    Assert.Equal(MeasureState.Slack, measure.Detect(store));
+}
+
+[Fact]
+public void Asr_is_unavailable_when_windows_defender_antivirus_is_disabled()
+{
+    var registry = new InMemoryRegistry();
+    using (var key = registry.OpenKey(RegistryRoot.LocalMachine, @"SOFTWARE\Policies\Microsoft\Windows Defender", true)!)
+    {
+        key.SetDword("DisableAntiSpyware", 1);
+    }
+    var measure = new AsrRulesMeasure(registry);
+    Assert.False(measure.IsAvailable());
+}
+
+[Fact]
+public void Asr_records_the_exact_original_rule_set() // spec defect #3
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var measure = new AsrRulesMeasure(registry);
+    measure.Apply(store);
+    Assert.True(store.TryGetNonReg(measure.Id, out var state));
+    Assert.NotEmpty(state); // The recorded original, not a sentinel.
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~NonRegistryTests"`
+Expected: build failure — the measures do not exist.
+
+- [ ] **Step 3: Implement the two measures**
+
+`RecallMeasure.IsAvailable` checks for the Recall feature's presence in the registry. `Apply` records the current state through `store.SaveNonReg(Id, currentState)` and then disables; `Restore` reads that record and reinstates it. The record is the *actual* prior state, never a fixed sentinel — that is defect #3's fix applied to Recall.
+
+`AsrRulesMeasure.IsAvailable` is `false` when `DisableAntiSpyware` is set or when no Defender presence is detectable. `Apply` reads **every** ASR rule GUID value under the ASR key, records the complete set including which were absent, writes the hardened rule set, and records that set as the non-registry saved state. `Restore` reinstates exactly the recorded set, including deleting rules that were absent before.
+
+`NonRegistryHandler` dispatches by `descriptor.Id`; an id with no registered measure returns `Unavailable`.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `dotnet test --filter "FullyQualifiedName~NonRegistryTests"`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: ASR and Recall non-registry measures"
+```
+
+---
+
+## Task 9: Four-state detection and restore ordering
+
+**Files:**
+- Create: `src/Palisade.Core/Engine/MeasureDetector.cs`, `RestorePlanner.cs`
+- Test: `tests/Palisade.Core.Tests/Engine/DetectionTests.cs`, `RestorePlannerTests.cs`
+
+**Interfaces:**
+- Consumes: `MeasureCatalog`, `IMechanismHandler` per mechanism, `AvailabilityRule`, `MeasureConstraint` (Tasks 2, 6–8).
+- Produces:
+  - `public sealed record AvailabilityOutcome(string Reason, IReadOnlyList<string> BlockedBy);`
+  - `public sealed record DetectionResult(MeasureId Id, MeasureState State, AvailabilityOutcome? Unavailable, IReadOnlyList<MeasureId> ConstrainedBy);`
+  - `public sealed class MeasureDetector(IReadOnlyDictionary<Mechanism, IMechanismHandler> handlers, IReadOnlyDictionary<MeasureId, INonRegistryMeasure> nonRegistry, Func<bool> isElevated)`
+    - `IReadOnlyList<DetectionResult> DetectAll();`
+    - `DetectionResult Detect(MeasureDescriptor descriptor);`
+  - `public sealed class RestorePlanner`
+    - `public static IReadOnlyList<MeasureId> Order(IEnumerable<MeasureDescriptor> descriptors);`
+    - `public static IReadOnlyList<MeasureId> ConstrainedBy(MeasureDescriptor descriptor);`
+  - Test helper, created in `tests/Palisade.Core.Tests/Engine/EngineFactory.cs` by this task and reused by Task 10 and Task 12: `internal static class EngineFactory { public static MeasureDetector BuildDetector(IRegistry? registry = null, bool isElevated = true); public static PalisadeEngine BuildEngine(IRegistry? registry = null, bool isElevated = true); }` — the single place the handler dictionary and non-registry dictionary are assembled for tests, so a later change to composition is made once.
+
+- [ ] **Step 1: Write the failing detection tests**
+
+```csharp
+[Fact]
+public void Without_elevation_exactly_the_14_privileged_measures_are_unavailable()
+{
+    var detector = BuildDetector(isElevated: false);
+    var results = detector.DetectAll();
+    Assert.Equal(14, results.Count(r => r.State == MeasureState.Unavailable));
+    Assert.All(
+        results.Where(r => r.State == MeasureState.Unavailable),
+        r => Assert.False(string.IsNullOrWhiteSpace(r.Unavailable!.Reason)));
+}
+
+[Fact]
+public void Elevation_reason_names_the_measure() // spec defect #11
+{
+    var detector = BuildDetector(isElevated: false);
+    var cmd = detector.Detect(MeasureCatalog.Get(new MeasureId("Cmd")));
+    Assert.Equal(MeasureState.Unavailable, cmd.State);
+    Assert.Contains("cmd", cmd.Unavailable!.Reason, StringComparison.OrdinalIgnoreCase);
+}
+
+[Fact]
+public void Restore_order_is_stable_across_100_runs() // spec defect #4
+{
+    var orders = Enumerable.Range(0, 100)
+        .Select(_ => string.Join(",", RestorePlanner.Order(MeasureCatalog.All).Select(i => i.Value)))
+        .Distinct()
+        .ToList();
+    Assert.Single(orders);
+}
+
+[Fact]
+public void Restore_order_respects_every_declared_constraint() // spec defect #4
+{
+    var order = RestorePlanner.Order(MeasureCatalog.All).Select(i => i.Value).ToList();
+    foreach (var descriptor in MeasureCatalog.All)
+    {
+        foreach (var constraint in descriptor.ConstrainedBy)
+        {
+            Assert.True(
+                order.IndexOf(constraint.Target.Value) < order.IndexOf(descriptor.Id.Value),
+                $"{constraint.Target} is constrained by {descriptor.Id}, so it must be restored first");
+        }
+    }
+}
+
+[Fact]
+public void Restore_order_is_a_permutation_of_the_catalog()
+{
+    var order = RestorePlanner.Order(MeasureCatalog.All).Select(i => i.Value).OrderBy(v => v, StringComparer.Ordinal).ToList();
+    var expected = MeasureCatalog.All.Select(m => m.Id.Value).OrderBy(v => v, StringComparer.Ordinal).ToList();
+    Assert.Equal(expected, order);
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~DetectionTests|FullyQualifiedName~RestorePlannerTests"`
+Expected: build failure — detector and planner do not exist.
+
+- [ ] **Step 3: Implement `MeasureDetector`**
+
+For each descriptor: if `RequiresElevation` and not elevated, return `Unavailable` with a reason naming the measure. Otherwise evaluate the descriptor's `Availability` rules; the first failing rule produces `Unavailable` with that rule's `Reason` and the ids that caused it. Otherwise dispatch to the mechanism handler and combine per-target states with the rule from Task 6 Step 3.
+
+`RestorePlanner.Order` builds the constraint edges from every descriptor's `ConstrainedBy`, then produces a reverse-topological order: a measure that is constrained by another is restored **before** the one constraining it, because undoing the dependent first is what leaves the shared registry value in a valid state. Ties break on `MeasureId.Value` ordinal comparison, which is what makes the order stable. Implement with Kahn's algorithm over the reversed edges and a `SortedSet<string>` of ready nodes, so the tie-break is structural rather than an accident of insertion order.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `dotnet test`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: four-state detection and deterministic restore ordering"
+```
+
+---
+
+## Task 10: `ApplyEngine` and the public facade
+
+**Files:**
+- Create: `src/Palisade.Core/Engine/ApplyReport.cs`, `ApplyEngine.cs`, `src/Palisade.Core/PalisadeEngine.cs`
+- Test: `tests/Palisade.Core.Tests/Engine/ApplyEngineTests.cs`
+
+**Interfaces:**
+- Consumes: everything above.
+- Produces:
+  - `public enum ApplyOutcome { Applied, AlreadyApplied, Restored, NotRestored, Unavailable, Failed }`
+  - `public sealed record MeasureResult(MeasureId Id, ApplyOutcome Outcome, string? Detail);`
+  - `public sealed record ApplyReport(IReadOnlyList<MeasureResult> Results, IReadOnlyList<string> Warnings, bool RequiresRestart);`
+  - `public sealed class ApplyEngine(MeasureDetector detector, RestorePlanner planner, IReadOnlyDictionary<Mechanism, IMechanismHandler> handlers, IReadOnlyDictionary<MeasureId, INonRegistryMeasure> nonRegistry, SavedStateStore store, Func<bool> isElevated)`
+    - `ApplyReport Apply(IReadOnlyCollection<MeasureId> ids);`
+    - `ApplyReport RestoreAll();`
+    - `ApplyReport ReapplyDefaults();` — restore every non-default measure to its original, then apply the default set. This is the Go tool's "Harden again (all default settings)" and it is the operation that must leave a machine in a fully-determined state after a version upgrade.
+  - `public sealed class PalisadeEngine`
+    - `public PalisadeEngine(IRegistryKeyFactory registry, RegistryOptions options, IAppPaths paths, Func<bool> isElevated)`
+    - `public IReadOnlyList<MeasureDescriptor> Catalog { get; }`
+    - `public IReadOnlyList<DetectionResult> Detect();`
+    - `public ApplyReport Apply(IReadOnlyCollection<MeasureId> ids);`
+    - `public ApplyReport RestoreAll();`
+    - `public ApplyReport ReapplyDefaults();`
+
+`PalisadeEngine`'s constructor is the single composition root for the whole library. Later plans construct it and nothing else.
+
+- [ ] **Step 1: Write the failing engine tests**
+
+```csharp
+[Fact]
+public void Apply_is_idempotent() // spec §12.1.9
+{
+    var engine = BuildEngine();
+    var ids = MeasureCatalog.All.Where(m => m.HardenByDefault && !m.RequiresElevation)
+        .Select(m => m.Id).ToList();
+    engine.Apply(ids);
+    var second = engine.Apply(ids);
+    Assert.All(second.Results, r => Assert.Equal(ApplyOutcome.AlreadyApplied, r.Outcome));
+}
+
+[Fact]
+public void Restore_is_idempotent()
+{
+    var engine = BuildEngine();
+    engine.RestoreAll();
+    var second = engine.RestoreAll();
+    Assert.All(second.Results, r => Assert.Equal(ApplyOutcome.NotRestored, r.Outcome));
+}
+
+[Fact]
+public void Reapply_defaults_leaves_no_measure_in_a_stressed_state()
+{
+    var engine = BuildEngine();
+    var report = engine.ReapplyDefaults();
+    Assert.DoesNotContain(report.Results, r => r.Outcome == ApplyOutcome.Failed);
+    var after = engine.Detect();
+    Assert.DoesNotContain(after, r => r.Id.Value == "Recall" && r.State == MeasureState.Stressed);
+}
+
+[Fact]
+public void Restore_all_returns_every_applied_measure_to_slack()
+{
+    var engine = BuildEngine();
+    engine.Apply(MeasureCatalog.All.Where(m => !m.RequiresElevation).Select(m => m.Id).ToList());
+    engine.RestoreAll();
+    var after = engine.Detect().Where(r => !r.Id.Value.StartsWith("LibreOffice")).ToList();
+    Assert.All(after, r => Assert.True(
+        r.State is MeasureState.Slack or MeasureState.Unavailable,
+        $"{r.Id} was {r.State}"));
+}
+
+[Fact]
+public void Report_carries_a_warning_for_every_malformed_saved_entry() // spec defect #5
+{
+    var registry = new InMemoryRegistry();
+    using (var key = registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, true)!)
+    {
+        key.SetDword("SavedStateNew_NOPE\Software\Foo____Bar", 1);
+    }
+    var engine = new PalisadeEngine(registry, RegistryOptions.Default, new AppPaths("."), () => true);
+    var report = engine.RestoreAll();
+    Assert.NotEmpty(report.Warnings);
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test --filter "FullyQualifiedName~ApplyEngineTests"`
+Expected: build failure — engine does not exist.
+
+- [ ] **Step 3: Implement `ApplyReport` and `ApplyEngine`**
+
+`Apply` iterates ids in `RestorePlanner.Order` order restricted to that set, skipping `Unavailable` with an `Unavailable` outcome carrying the detector's reason, and skipping `Stressed` unless the caller explicitly asked for it — **the engine never overwrites a `Stressed` measure without an explicit flag**, because that is defect #3. `RestoreAll` reads the saved state, restores in `RestorePlanner.Order` order, and reports `NotRestored` for anything with no saved entry. `RequiresRestart` is set when any applied measure is in the restart-required set. Every malformed saved-state entry becomes a `Warning` carrying the entry's `Warning` sentence — never a silent drop.
+
+- [ ] **Step 4: Implement `PalisadeEngine`**
+
+A thin facade. The constructor builds the handler dictionary, the non-registry dictionary, the store, the detector, and the engine. It contains no logic beyond that wiring.
+
+- [ ] **Step 5: Run the whole suite**
+
+Run: `dotnet test`
+Expected: all pass. Confirm no test opened a real registry key by checking that no test file references `Microsoft.Win32.Registry`.
+
+Run: `Select-String -Path tests/**/*.cs -Pattern "Microsoft.Win32.Registry"` → expect no matches.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "feat: apply engine and PalisadeEngine facade"
+```
+
+---
+
+## Task 11: `RegistryAccess` — the only real-registry adapter
+
+**Files:**
+- Create: `src/Palisade.Core/Registry/RegistryAccess.cs`
+- Test: `tests/Palisade.Core.Tests/Registry/RegistryAccessTests.cs` (guarded, skipped by default)
+
+**Interfaces:**
+- Consumes: `IRegistryKeyFactory`, `RegistryRoot` (Tasks 2–3).
+- Produces: `public sealed class RegistryAccess : IRegistry, IRegistryKeyFactory` with `OpenKey(RegistryRoot root, string subKey, bool writable)` translating a `RegistryRoot` to the corresponding `Microsoft.Win32.RegistryKey` and returning a `RegistryKeyWrapper` that adapts the `IRegistryKey` surface. `OpenKey` returns `null` when the underlying open throws `SecurityException` **or** `IOException` for a missing key — both are normal absence.
+
+- [ ] **Step 1: Write the guarded integration test**
+
+A `[Fact]` with a `Skippable`-style guard is not available without an extra package, so gate on an environment variable instead:
+
+```csharp
+[Fact]
+public void Opens_a_real_key_read_only()
+{
+    if (Environment.GetEnvironmentVariable("PALISADE_INTEGRATION") != "1")
+    {
+        return; // No real-registry access in the normal suite.
+    }
+    using var key = new RegistryAccess().OpenKey(RegistryRoot.CurrentUser, @"Software", false);
+    Assert.NotNull(key);
+}
+
+[Fact]
+public void Returns_null_for_a_missing_key()
+{
+    Assert.Null(new RegistryAccess().OpenKey(
+        RegistryRoot.CurrentUser, @"Software\Palisade\NoSuchKey_9F2C", writable: false));
+}
+```
+
+The second test is safe unconditionally: it asserts absence, and the key name is one this project never creates.
+
+- [ ] **Step 2: Run to verify the first test is skipped in effect**
+
+Run: `dotnet test --filter "FullyQualifiedName~RegistryAccessTests"`
+Expected: pass — both tests pass, the first by returning early.
+
+- [ ] **Step 3: Implement `RegistryAccess`**
+
+This is the only file in `src/Palisade.Core` that mentions `Microsoft.Win32.Registry`. `IRegistryKey.TryGet*` must catch `IOException` and return `false`, because a value of the wrong kind or a racing deletion surfaces as an exception, not a null.
+
+- [ ] **Step 4: Verify the no-real-registry rule holds across the whole project**
+
+Run: `Select-String -Path "src/Palisade.Core/**/*.cs" -Pattern "Microsoft.Win32.Registry" -List`
+Expected: exactly one file, `RegistryAccess.cs`.
+
+Run: `dotnet test`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "feat: real-registry adapter isolated to a single file"
+```
+
+---
+
+## Task 12: Full-catalog detection suite
+
+**Files:**
+- Create: `tests/Palisade.Core.Tests/Catalog/AllMeasuresTests.cs`
+
+**Interfaces:**
+- Consumes: `PalisadeEngine`, `MeasureCatalog` (all prior tasks).
+- Produces: no production code. This task exists to prove every one of the 26 measures resolves, detects, and reports a coherent outcome — the spec requires per-measure coverage and it is the task most likely to surface a wrong descriptor.
+
+- [ ] **Step 1: Write the per-measure test**
+
+```csharp
+public class AllMeasuresTests
+{
+    public static TheoryData<string> AllMeasureIds()
+    {
+        var data = new TheoryData<string>();
+        foreach (var m in MeasureCatalog.All) data.Add(m.Id.Value);
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(AllMeasureIds))]
+    public void Every_measure_detects_to_a_known_state_without_elevation(string id)
+    {
+        var engine = BuildEngine(isElevated: false);
+        var result = Assert.Single(engine.Detect().Where(r => r.Id.Value == id));
+        Assert.True(Enum.IsDefined(result.State));
+        if (result.State == MeasureState.Unavailable)
+            Assert.False(string.IsNullOrWhiteSpace(result.Unavailable!.Reason));
+    }
+
+    [Theory]
+    [MemberData(nameof(AllMeasureIds))]
+    public void Every_measure_detects_to_a_known_state_with_elevation(string id)
+    {
+        var engine = BuildEngine(isElevated: true);
+        var result = Assert.Single(engine.Detect().Where(r => r.Id.Value == id));
+        Assert.True(Enum.IsDefined(result.State));
+    }
+
+    [Theory]
+    [MemberData(nameof(AllMeasureIds))]
+    public void Every_measures_detect_survives_an_apply_and_restore_cycle(string id)
+    {
+        var engine = BuildEngine(isElevated: true);
+        engine.Apply(new[] { new MeasureId(id) });
+        engine.RestoreAll();
+        var result = Assert.Single(engine.Detect().Where(r => r.Id.Value == id));
+        Assert.True(result.State is MeasureState.Slack or MeasureState.Unavailable,
+            $"{id} was {result.State} after restore");
+    }
+}
+```
+
+- [ ] **Step 2: Run and fix descriptors until green**
+
+Run: `dotnet test --filter "FullyQualifiedName~AllMeasuresTests"`
+Expected: failures here mean a descriptor's target path, value name, or hardened value is wrong. Fix the descriptor in `MeasureCatalog.cs` against the Go source — do not weaken the test. Expect this task to take several iterations; that is its purpose.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A
+git commit -m "test: per-measure detection coverage for all 26 measures"
+```
+
+---
+
+## Execution Notes
+
+- Tasks 1–5 are strictly sequential: each consumes the previous one's types.
+- Task 6 needs Task 3's hive and Task 4's names. Task 7 needs Task 6's `IMechanismHandler`. Task 8 needs Task 6's contract. Tasks 9–10 need all handlers.
+- Task 12 is the gate. Nothing is "done" until all 26 measures pass detection, apply, and restore.
+- `Palisade.Cli` and `Palisade.App` are separate plans (2 and 3) and depend only on `PalisadeEngine`'s public surface, which Task 10 freezes.
+
+## Plan Self-Review
+
+- **Spec coverage:** §4 architecture → Task 1. §5 model → Task 2. §6 the 26 measures → Tasks 2 and 12. §7 saved state and Go compatibility → Tasks 4, 5, 11. §7.4 restore ordering → Task 9. §8 defect #1 (file-association `IsHardened`) → Task 6 Step 4 and Task 12's per-measure detect test. #3 (ASR inexact restore) → Task 8. #4 (nondeterministic restore) → Task 9. #5 (unguarded legacy parsing) → Task 5. #9 (hardcoded version list) → Task 7. #10 (two-state model) → Tasks 6 and 9. #11 (opaque elevation) → Task 9. Defects #2, #6, #7 are properties of the design itself rather than separate work: `IRegistryKey : IDisposable` with `using` everywhere is #2; the `ApplyReport.Warnings` channel plus Task 10's malformed-entry test is #6; `PalisadeEngine` returning a report instead of exiting the process is #7. Defect #8 (truncated text) is a UI concern and belongs to Plan 3. §9 four states → Tasks 6 and 9. §12.1 Core tests → Tasks 4–12. §13 delivery → deferred to Plan 2.
+- **Step scan:** every code step names a file and a signature. No step says "handle edge cases" or "write tests for the above."
+- **Type consistency:** verified. `MeasureDescriptor` gained `Settings` in Task 2 after this review caught Task 6 depending on a key the descriptor did not have — the eight reserved `Settings` keys are now fixed in Task 2. `StubVersionResolver` is declared in Task 6 (its first use) and `EngineFactory` in Task 9 (its first use), so no test references an undefined helper. `MeasureId`, `IMechanismHandler`, `SavedStateStore`, `RegistryOptions`, `IRegistryKeyFactory` are each defined once and consumed by name thereafter.
+- **Review Focus:** all five lines have named tests in Tasks 4, 6, and 10, each marked `// Review Focus #n`.
+- **Proportion:** the plan is longer than the spec's Core-relevant sections, which is expected — it decomposes 26 measures into verifiable increments. It contains no implementation bodies; the only code blocks are test assertions, package versions, and property values.

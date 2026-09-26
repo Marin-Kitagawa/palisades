@@ -1,0 +1,20 @@
+## .NET build output
+**/bin/
+**/obj/
+
+## IDE / editor
+.vs/
+.idea/
+*.user
+
+## OS noise
+Thumbs.db
+.DS_Store
+
+## local publish/run output
+_run/
+publish-output/
+*.binlog
+
+## Superpowers SDD scratch (ledger, briefs, review packages)
+.superpowers/
