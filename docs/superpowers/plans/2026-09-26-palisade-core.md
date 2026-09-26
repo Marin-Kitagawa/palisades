@@ -35,7 +35,8 @@ Five input classes the spec implies but no task's happy-path tests exercise. Eac
 2. **A legacy `SavedState_` name whose key path contains underscores** — `_` is both the legacy separator and a legal key-path character, so the legacy split is genuinely ambiguous. It must be resolved against the known root token and validated, and an unresolvable name skipped, never guessed.
 3. **A measure applied by something else** — Group Policy, a corporate image, or another tool already set the value. `Detect` must return `Stressed`, never `Slack`, and `Apply` must not silently discard the pre-existing value.
 4. **A `SavedStateNotExisting_` entry whose target value has since been created** — restore must delete it (that is what was recorded) rather than leave it, and must report that it deleted a value the user had since created.
-5. **A registry `REG_MULTI_SZ` (DisallowRun) where another program added a different entry** — restore must remove only Palisade's entry and leave the other program alone, and must not delete the whole list.
+5. **A DisallowRun subkey where another program added a different entry** — restore must remove only Palisade's entries and leave the other program's, renumbering the survivors, and must not delete the subkey if entries remain. (Amended: DisallowRun is **not** a `REG_MULTI_SZ` — see DisallowRunHandler in Task 6.)
+6. **A restore whose target key no longer exists** — harden may create a key, but restore must not. Go distinguishes `CreateKey` (harden) from `OpenKey` (restore, which fails when the key is absent); a Palisade restore that created the key would leave behind state the Go tool would never create. **Restore must probe read-only first and stop without writing if the key is absent.**
 
 ---
 
@@ -155,7 +156,7 @@ git commit -m "chore: scaffold Palisade.Core and test project"
   - `AppFilter` and `VersionFilter` are per-target allowlists (comma-separated; `null` means no narrowing, i.e. every discovered product). They exist because upstream scopes individual sub-values to specific products: `office.go` writes `AllowDDE` for **Word only, versions 14–16**, and `WorkbookLinkWarnings` for **Excel only, 12–16**. With narrowing only on the descriptor, Task 6 would apply the union of all version and app lists to every sub-value and write **32 registry values where upstream writes 17** - setting DDE keys on 15 products the Go tool deliberately leaves alone. Verified: expanding the catalog DDE targets with these filters yields exactly **17**, matching `office.go`. A `null` filter reproduces the un-narrowed majority; a non-null filter reproduces the exception.
   - `public sealed record MeasureDescriptor(MeasureId Id, string Name, string LongName, string Consequence, Mechanism Mechanism, bool RequiresElevation, bool HardenByDefault, MeasureGroup Group, IReadOnlyDictionary<string, string> Settings, IReadOnlyList<MeasureTarget> Targets, IReadOnlyList<MeasureConstraint> ConstrainedBy, IReadOnlyList<AvailabilityRule> Availability);`
 
-  **`Targets` is the registry payload** and is what makes a descriptor self-contained data rather than a type per measure. It is non-empty for `RegistryDword`, `RegistryString` and `VersionedPath` measures, and empty for `DisallowRun`, `FileAssociation` and `NonRegistry`. `Mechanism` stays the descriptor's classification (used for restore ordering, UI grouping, and the validation test below); `Target.Kind` is what a handler actually dispatches on, which is why a `RegistryString` measure may legitimately carry one `"Dword"` target — LibreOffice writes `REG_SZ "Value"` and `REG_DWORD "Final"` at the same policy path (`libreoffice.go:39` and `libreoffice.go:57`).
+  **`Targets` is the registry payload** and is what makes a descriptor self-contained data rather than a type per measure. It is non-empty for `RegistryDword`, `RegistryString` and `VersionedPath` measures, and empty for `DisallowRun`, `FileAssociation` and `NonRegistry`. `Mechanism` stays the descriptor's classification (used for restore ordering, UI grouping, and the validation test below); `Target.Kind` is what a handler actually dispatches on, which is why a `RegistryString` measure may legitimately carry one `"Dword"` target — LibreOffice writes `REG_SZ "Value"` and `REG_DWORD "Final"` at the same policy path (`libreoffice.go:39` and `libreoffice.go:57`). **`"MultiString"` is carried by no measure, and no MultiString write exists anywhere in the Go tree** — it is a legitimate `REG_MULTI_SZ` kind that the in-memory fake models for completeness, not a requirement of any handler. Do not read its presence in that enumeration as licence to reimplement DisallowRun as a multi-string list: DisallowRun is numbered `REG_SZ` values in a subkey (`cmd.go:170-177`).
 
   **`Settings` holds only the version and app lists used for expansion.** Reserved keys, all string-typed: `"OfficeVersions"`, `"AdobeVersions"`, `"Apps"` (comma-separated). These are the *universe* of products to discover; a target's `AppFilter`/`VersionFilter` narrows it. The previously listed `"PathTemplate"` key is **removed** — a template belongs on the target that uses it, so DDE's per-sub-value `%s` paths and the versioned-path measures share one expansion path instead of two. The previously listed `"HardenedValue"`, `"MultiValueName"` and bare `"ValueName"` keys are likewise **removed**; that payload lives in `Targets`, and keeping two spellings of the same fact is how they drift apart.
   - `public readonly record struct MeasureId(string Value);` with `public override string ToString() => Value;` and `public static implicit operator string(MeasureId id) => id.Value;` — the implicit operator exists so the saved-state feature names read cleanly, e.g. `saveHardenState(MeasureId.From("recall"), "disabled")`.
@@ -459,8 +460,8 @@ git commit -m "feat: measure model and 26-measure catalog"
 - Produces:
   - `public enum RegistryValueKind { Dword, String, MultiString, Binary, None }`
   - `public interface IRegistryKey : IDisposable { RegistryValueKind GetValueKind(string name); bool TryGetDword(string name, out uint value); bool TryGetString(string name, out string value); bool TryGetMultiString(string name, out string[] value); void SetDword(string name, uint value); void SetString(string name, string value); void SetMultiString(string name, IReadOnlyList<string> value); void DeleteValue(string name); IReadOnlyList<string> GetValueNames(); }`
-  - `public interface IRegistry { IRegistryKey OpenKey(RegistryRoot root, string subKey, bool writable); }` — `OpenKey` **returns `null`** when the key does not exist, and every caller must handle it. This is the single most important convention in the abstraction: "key absent" is normal state, not an error.
-  - `public interface IRegistryKeyFactory { IRegistryKey OpenKey(RegistryRoot root, string subKey, bool writable); }`
+  - `public interface IRegistry { IRegistryKey OpenKey(RegistryRoot root, string subKey, bool writable); bool DeleteKey(RegistryRoot root, string subKey); }` — `OpenKey` **returns `null`** when the key does not exist, and every caller must handle it. This is the single most important convention in the abstraction: "key absent" is normal state, not an error. `DeleteKey` returns `false` when the key was already absent. **`OpenKey(..., writable: true)` creates the key on demand, so it conflates Go's `CreateKey` (harden) with `OpenKey` (restore); the caller owns the distinction** — see Global Constraint 6. `DeleteKey` is required by three upstream call sites: the DisallowRun subkey is deleted when its last entry is removed (`cmd.go:136`, `powershell.go:140`), and the whole saved-state key is deleted on restore (`utils.go:159`).
+  - `public interface IRegistryKeyFactory { IRegistryKey OpenKey(RegistryRoot root, string subKey, bool writable); bool DeleteKey(RegistryRoot root, string subKey); }`
   - `public sealed record RegistryOptions(string SavedStateKeyPath) { public const string DefaultSavedStateKeyPath = @"SOFTWARE\Security Without Borders\"; public static RegistryOptions Default { get; } = new(DefaultSavedStateKeyPath); }`
   - `public interface IAppPaths { string LogDirectory { get; } }`
   - `public sealed class AppPaths : IAppPaths { public AppPaths(string logDirectory); public string LogDirectory { get; } }`
@@ -525,7 +526,7 @@ Exactly the signatures above. `RegistryOptions.DefaultSavedStateKeyPath` is the 
 
 - [ ] **Step 4: Implement the in-memory hive**
 
-`InMemoryRegistry` holds a single `Dictionary<string, InMemoryEntry>` keyed by `"{rootToken}\\{subKey}"`, where `InMemoryEntry` is the mutable value bag for that path. **`OpenKey` with `writable: true` creates the entry on demand. The path dictionary and every value-name dictionary use `StringComparer.OrdinalIgnoreCase`**, because real registry paths and value names are case-insensitive and several upstream Go files disagree on the casing of the same root (`SYSTEM\...` in `lsa_protection.go:28` versus lowercase elsewhere). A case-sensitive fake would fail tests for the wrong reason and encode a constraint the platform does not have. `TryGet*` return `false` for an absent name **and** for a kind mismatch, so a `REG_SZ` read through `TryGetDword` fails rather than coercing.
+`InMemoryRegistry` holds a single `Dictionary<string, InMemoryEntry>` keyed by `"{rootToken}\\{subKey}"`, where `InMemoryEntry` is the mutable value bag for that path. **`OpenKey` with `writable: true` creates the entry on demand. The path dictionary and every value-name dictionary use `StringComparer.OrdinalIgnoreCase`**, because real registry paths and value names are case-insensitive and several upstream Go files disagree on the casing of the same root (`SYSTEM\...` in `lsa_protection.go:28` versus lowercase elsewhere). A case-sensitive fake would fail tests for the wrong reason and encode a constraint the platform does not have. `TryGet*` return `false` for an absent name **and** for a kind mismatch, so a `REG_SZ` read through `TryGetDword` fails rather than coercing. `DeleteKey` removes the entry **and every entry whose path sits beneath it** — real `RegDeleteKey` removes a subtree, and `Clear()` on the saved-state key and the DisallowRun subkey both rely on that. It returns `false` when nothing was removed, so "already absent" is distinguishable from "deleted".
 
 - [ ] **Step 5: Run to verify it passes**
 
@@ -697,7 +698,7 @@ git commit -m "feat: saved-state name parsing with guarded legacy handling"
     - `public IReadOnlyList<SavedStateEntry> ReadAll()`
     - `public bool TryGetNonReg(MeasureId feature, out string state)`
     - `public void DeleteNonReg(MeasureId feature)`
-    - `public void Clear()`
+    - `public void Clear()` — deletes the whole saved-state key via `IRegistryKeyFactory.DeleteKey`, matching `utils.go:159`, which removes the key outright on restore rather than emptying it. It must be a no-op when the key is already absent, not an error.
 
 - [ ] **Step 1: Write the failing round-trip tests**
 
@@ -819,7 +820,7 @@ git commit -m "feat: saved-state store with Go-format compatibility"
   - `public interface IVersionResolver { IReadOnlyList<string> ResolveOfficeVersions(); IReadOnlyList<string> ResolveAdobeVersions(); }` — `VersionedPathHandler` codes against this so version discovery is testable and swappable; Task 7 supplies the real one.
   - Test helper, created in `tests/Palisade.Core.Tests/StubVersionResolver.cs` by this task because Task 6's tests need it: `public sealed class StubVersionResolver(IReadOnlyList<string>? officeVersions = null, IReadOnlyList<string>? adobeVersions = null) : IVersionResolver` — the parameterless call returns empty lists, which is what the `RegistryDword` tests want since those measures are not versioned.
 
-**`MultiValueName` is how `MultiRegistryDword` works:** it is `null` for a single-value target. When set, the target's `ValueName` is ignored and the handler manages that `REG_MULTI_SZ` list instead — this is the `DisallowRun` list and the `Autorun` list.
+**`MultiValueName` is for multi-value measures.** It is `null` for a single-value target. When set, the target's `ValueName` is ignored and the handler manages several values under one key instead — the `Autorun` and `Uac` lists, and the `DisallowRun` subkey. **This is not `REG_MULTI_SZ`.** It names *where* a handler fans out, and the values it writes are still ordinary `REG_SZ`/`REG_DWORD` values. The only genuine `REG_MULTI_SZ` in the tree is none: no `SetMultiString` call exists upstream.
 
 - [ ] **Step 1: Write the failing mechanism tests**
 
@@ -929,7 +930,17 @@ Expected: build failure — handlers do not exist.
 
 - [ ] **Step 4: Implement `DisallowRunHandler` and `FileAssociationHandler`**
 
-`DisallowRunHandler.ResolveTargets` returns one target with `ValueName` set to `"1"` (the `DisallowRun` enabling flag) and `MultiValueName` set to the executable name. `Apply` writes `1` to the flag after recording the flag's original state, then reads the current list, appends the executable if absent, and writes it back. `Restore` removes **only** that executable from the list and leaves every other entry, then restores the flag's original state. This is Review Focus #5 — the test asserting that another program's entry survives restore is in this task.
+**`DisallowRunHandler` manages numbered `REG_SZ` values in a subkey — it is not a `REG_MULTI_SZ` list.** The upstream shape (`cmd.go`, `powershell.go`) is:
+
+- `HKCU\...\Policies\Explorer` carries a `DWORD DisallowRun = 1` flag that enables the policy.
+- The **subkey** `HKCU\...\Policies\Explorer\DisallowRun` carries numbered string values: `"1"="cmd.exe"`, `"2"="powershell_ise.exe"`, `"3"="powershell.exe"` (`cmd.go:170-177`, `powershell.go:180-185`). There is no list value and no index field — the value *names* are the indices.
+- Reading walks `i = 1, 2, 3 …` and **stops at the first gap** (`cmd.go:77`), so a hole truncates the list.
+- Harden finds the first free index (scanning to 99) and writes there, preserving foreign entries.
+- Restore iterates the same way, deletes only *its own* executables, **renumbers the survivors from 1**, and then either keeps the subkey or `DeleteKey`s it when nothing is left (`cmd.go:118-140`).
+
+`ResolveTargets` returns one target whose `ValueName` is the `Explorer\DisallowRun` flag and whose `MultiValueName` is the subkey to manage. `Apply` records the flag's original state, appends at the first free index, and sets the flag to `1`. `Restore` removes only its own entries, compacts, deletes the subkey if it became empty, then restores the flag's original state. This is Review Focus #5.
+
+**Both the handler and its tests must work in numbered-`REG_SZ` space.** A test that seeds `SetMultiString("", …)` would pass against an implementation that is wrong in production, and a compaction step that is never asserted is a compaction step that will silently rot.
 
 `FileAssociationHandler` works against `HKCU\SOFTWARE\Classes` and restricts which ProgIDs may open each extension. The exact per-extension restriction table is the longest piece of hand-authored data in the project; put it in a single `FileAssociationTable` static class inside `FileAssociationHandler.cs` and keep it flat.
 
@@ -945,10 +956,12 @@ public void DisallowRun_restore_removes_only_our_entry() // Review Focus #5
     var handler = new DisallowRunHandler();
     var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
 
+    // A foreign program already owns index 1. Ours must land at index 2, and restore
+    // must put the foreign entry back at index 1 — that is what compaction means.
     using (var key = registry.OpenKey(RegistryRoot.CurrentUser,
         @"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\DisallowRun", true)!)
     {
-        key.SetMultiString("", new[] { "cmd.exe", "wscript.exe" }); // wscript.exe is not ours.
+        key.SetString("1", "wscript.exe");
     }
 
     handler.Apply(descriptor, targets, registry, store);
@@ -956,8 +969,48 @@ public void DisallowRun_restore_removes_only_our_entry() // Review Focus #5
 
     using var check = registry.OpenKey(RegistryRoot.CurrentUser,
         @"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\DisallowRun", false)!;
-    Assert.True(check.TryGetMultiString("", out var remaining));
-    Assert.Equal(new[] { "wscript.exe" }, remaining);
+    Assert.Equal(new[] { "1" }, check.GetValueNames());       // the gap closed
+    Assert.True(check.TryGetString("1", out var remaining));
+    Assert.Equal("wscript.exe", remaining);
+    Assert.DoesNotContain("cmd.exe", check.GetValueNames());
+}
+
+[Fact]
+public void DisallowRun_restore_deletes_the_subkey_when_nothing_is_left() // cmd.go:136
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("Cmd"));
+    var handler = new DisallowRunHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+
+    handler.Apply(descriptor, targets, registry, store);
+    handler.Restore(descriptor, targets, registry, store);
+
+    // An empty DisallowRun subkey denies nothing, but upstream removes it, and leaving
+    // residue the Go tool would not leave is a divergence in its own right.
+    Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser,
+        @"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\DisallowRun", false));
+}
+
+[Fact]
+public void Restore_does_not_resurrect_a_deleted_key() // Global Constraint 6
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("OfficeDde"));
+    var handler = new RegistryDwordHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+
+    handler.Apply(descriptor, targets, registry, store);
+    // Simulate the user or a cleanup tool removing the key after hardening.
+    foreach (var target in targets)
+        registry.DeleteKey(target.Root, target.KeyPath);
+
+    handler.Restore(descriptor, targets, registry, store);
+
+    // Go's restore opens the key and skips on failure; it never re-creates it.
+    Assert.All(targets, t => Assert.Null(registry.OpenKey(t.Root, t.KeyPath, false)));
 }
 
 [Fact]
