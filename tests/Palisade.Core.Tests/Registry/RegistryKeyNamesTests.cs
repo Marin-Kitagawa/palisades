@@ -36,6 +36,71 @@ public class RegistryKeyNamesTests
             RegistryKeyNames.FormatNotExisting(RegistryRoot.LocalMachine, @"Software\Foo", "Bar"));
 
     [Fact]
+    public void Formats_the_string_name_with_four_underscores() =>
+        // Byte-identical to registry_utils.go:432, the write site the Go tool uses for a
+        // REG_SZ. The path is LibreOffice's SecureURL value, a real String-kind target in the
+        // catalog, expanded the way a save would expand it.
+        Assert.Equal(
+            @"SavedStateNewSZ_LOCAL_MACHINE\SOFTWARE\Policies\LibreOffice\org.openoffice.Office.Common\Security\Scripting\SecureURL____Value",
+            RegistryKeyNames.FormatString(RegistryRoot.LocalMachine,
+                @"SOFTWARE\Policies\LibreOffice\org.openoffice.Office.Common\Security\Scripting\SecureURL",
+                "Value"));
+
+    [Fact]
+    public void Round_trips_a_string_name_as_the_string_kind()
+    {
+        // The write half is FormatString above; this is the read half, and it has to land on
+        // SavedStateKind.String or Task 5 would restore an SZ entry with the wrong write.
+        var formatted = RegistryKeyNames.FormatString(RegistryRoot.LocalMachine, @"Software\Foo", "Bar");
+
+        Assert.True(RegistryKeyNames.TryParse(
+            formatted, out var kind, out var root, out var keyPath, out var valueName, out var warning));
+        Assert.Equal(SavedStateKind.String, kind);
+        Assert.Equal(RegistryRoot.LocalMachine, root);
+        Assert.Equal(@"Software\Foo", keyPath);
+        Assert.Equal("Bar", valueName);
+        Assert.Null(warning);
+    }
+
+    [Fact]
+    public void The_three_registry_formatters_differ_only_in_their_prefix()
+    {
+        // All three compose prefix + root + "\" + keyPath + "____" + valueName, so the only
+        // thing that can drift between them is the prefix. Go writes the same three shapes:
+        // :378, :432 and :388/:442.
+        const string keyPath = @"Software\Foo";
+        const string valueName = "Bar";
+
+        Assert.Equal(
+            "SavedStateNew_LOCAL_MACHINE\\Software\\Foo____Bar",
+            RegistryKeyNames.Format(RegistryRoot.LocalMachine, keyPath, valueName));
+        Assert.Equal(
+            "SavedStateNewSZ_LOCAL_MACHINE\\Software\\Foo____Bar",
+            RegistryKeyNames.FormatString(RegistryRoot.LocalMachine, keyPath, valueName));
+        Assert.Equal(
+            "SavedStateNotExisting_LOCAL_MACHINE\\Software\\Foo____Bar",
+            RegistryKeyNames.FormatNotExisting(RegistryRoot.LocalMachine, keyPath, valueName));
+    }
+
+    [Fact]
+    public void The_three_registry_prefixes_each_dispatch_to_their_own_kind()
+    {
+        const string keyPath = @"Software\Foo";
+        const string valueName = "Bar";
+
+        Assert.Equal(SavedStateKind.Dword, KindOf(RegistryKeyNames.Format(RegistryRoot.CurrentUser, keyPath, valueName)));
+        Assert.Equal(SavedStateKind.String, KindOf(RegistryKeyNames.FormatString(RegistryRoot.CurrentUser, keyPath, valueName)));
+        Assert.Equal(SavedStateKind.NotExisting, KindOf(RegistryKeyNames.FormatNotExisting(RegistryRoot.CurrentUser, keyPath, valueName)));
+    }
+
+    private static SavedStateKind KindOf(string name)
+    {
+        Assert.True(RegistryKeyNames.TryParse(name, out var kind, out _, out _, out _, out var warning));
+        Assert.Null(warning);
+        return kind;
+    }
+
+    [Fact]
     public void Round_trips_a_dword_name()
     {
         Assert.True(RegistryKeyNames.TryParse(

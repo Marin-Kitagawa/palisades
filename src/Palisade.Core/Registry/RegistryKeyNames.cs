@@ -132,6 +132,17 @@ public static class RegistryKeyNames
         Compose(NewDwordPrefix, root, keyPath, valueName);
 
     /// <summary>
+    /// The name a string's original state is stored under, byte-identical to
+    /// <c>"SavedStateNewSZ_" + root + "\" + keyPath + "____" + valueName</c>
+    /// (<c>registry_utils.go:432</c>). This is the REG_SZ counterpart of
+    /// <see cref="Format(RegistryRoot, string, string)"/>, and the only form whose saved value
+    /// is the original string rather than a number.
+    /// </summary>
+    /// <inheritdoc cref="Format(RegistryRoot, string, string)" path="/exception"/>
+    public static string FormatString(RegistryRoot root, string keyPath, string valueName) =>
+        Compose(NewStringPrefix, root, keyPath, valueName);
+
+    /// <summary>
     /// The name recording that a value did not exist, byte-identical to
     /// <c>"SavedStateNotExisting_" + root + "\" + keyPath + "____" + valueName</c>
     /// (<c>registry_utils.go:388</c> and <c>:442</c>).

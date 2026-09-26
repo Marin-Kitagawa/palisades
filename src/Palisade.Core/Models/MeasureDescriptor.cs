@@ -33,14 +33,30 @@ public sealed record AvailabilityRule(string Kind, IReadOnlyDictionary<string, s
 public sealed record MeasureConstraint(MeasureId Target, string Reason);
 
 /// <summary>
-/// One registry value a measure writes. <see cref="Kind"/> is exactly one of
-/// <c>"Dword"</c>, <c>"String"</c> or <c>"MultiString"</c> and drives the read and the
-/// write, so a measure that writes both a REG_SZ and a REG_DWORD at one path needs no
-/// bespoke encoding. <see cref="HardenedValue"/> is the string form of the hardened
-/// value; for <c>"Dword"</c> it is decimal digits, and it may be empty
-/// (<c>SecureURL\Value</c> hardens to <c>""</c>). <see cref="Path"/> may contain
-/// <c>%s</c>, the placeholder for the product version.
+/// One registry value a measure writes. Every field here drives the read and the write, so a
+/// measure that writes both a REG_SZ and a REG_DWORD at one path needs no bespoke encoding.
 /// </summary>
+/// <param name="Root">
+/// The root key the value lives under, as one of the six <see cref="RegistryRoot"/> values.
+/// </param>
+/// <param name="Path">
+/// The key path below <paramref name="Root"/>, without the root token. May contain <c>%s</c>,
+/// the placeholder for the product version, which is expanded per discovered product before the
+/// value is read or written.
+/// </param>
+/// <param name="ValueName">
+/// The registry value name, as <c>ValueName</c> is in the Go measure data.
+/// </param>
+/// <param name="Kind">
+/// Exactly one of <c>"Dword"</c>, <c>"String"</c> or <c>"MultiString"</c>, and it decides which
+/// read and which write the target uses. It is a string rather than an enum because it is
+/// transcribed from the Go data, and a measure may legitimately write two kinds at one path.
+/// </param>
+/// <param name="HardenedValue">
+/// The value to harden to, in string form; for <c>"Dword"</c> it is decimal digits. It may be
+/// empty, which is a real hardened value and not a missing one: <c>SecureURL\Value</c> is
+/// cleared to <c>""</c>.
+/// </param>
 /// <param name="AppFilter">
 /// Comma-separated allowlist of apps this target applies to, or <c>null</c> for no
 /// narrowing. <c>office.go</c> scopes <c>AllowDDE</c> to Word and
