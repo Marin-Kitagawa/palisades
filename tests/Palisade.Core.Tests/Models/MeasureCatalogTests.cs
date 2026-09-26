@@ -1,3 +1,19 @@
+// Hardentools
+// Copyright (C) 2017-2023 Security Without Borders
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 using Palisade.Core.Models;
 
 namespace Palisade.Core.Tests.Models;
@@ -175,12 +191,83 @@ public class MeasureCatalogTests
     public void Only_the_DDE_measure_narrows_its_targets()
     {
         // Versioned-path and LibreOffice measures apply to every discovered product upstream,
-        // so a filter on them would itself be a divergence.
+        // so a filter on them would itself be a divergence. Assert the id, not just the count:
+        // `Assert.Single` would pass for a filter that had migrated to another single measure.
         var narrowing = MeasureCatalog.All
             .Where(m => m.Targets.Any(t => t.AppFilter is not null || t.VersionFilter is not null))
             .Select(m => m.Id.Value).ToList();
-        Assert.Single(narrowing);
+        Assert.Equal(["OfficeDde"], narrowing);
     }
+
+    [Fact]
+    public void DDE_narrowing_pins_the_exact_filter_values_upstream_uses()
+    {
+        // The filter values are the entire point of the narrowing, and nothing else in the
+        // suite observes them: editing the version list from 14/15/16 to 14/15 would drop DDE
+        // hardening from 17 registry writes to 11 with every other test still green. Values
+        // taken from office.go:154-292.
+        var dde = MeasureCatalog.All.Single(m => m.Id.Value == "OfficeDde");
+
+        // These are value *names*; the path is a `%s` template shared by several sub-values.
+        var allowDde = Assert.Single(dde.Targets, t => t.ValueName == "AllowDDE");
+        Assert.Equal("Word", allowDde.AppFilter);
+        Assert.Equal("14.0,15.0,16.0", allowDde.VersionFilter);
+
+        var workbook = Assert.Single(dde.Targets, t => t.ValueName == "WorkbookLinkWarnings");
+        Assert.Equal("Excel", workbook.AppFilter);
+        Assert.Null(workbook.VersionFilter); // upstream uses the full standard list
+
+        // `DontUpdateLinks` appears twice: once scoped to Word+Excel, once Word-only (Outlook).
+        // Compared as a set — an allowlist's order carries no meaning, and pinning it would
+        // make this test brittle for no benefit.
+        static HashSet<string> Set(string? csv) => (csv ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var dontUpdate = dde.Targets.Where(t => t.ValueName == "DontUpdateLinks").ToList();
+        Assert.Equal(2, dontUpdate.Count);
+        Assert.Contains(dontUpdate, t => Set(t.AppFilter).SetEquals(["Word", "Excel"]));
+        Assert.Contains(dontUpdate, t => Set(t.AppFilter).SetEquals(["Word"]));
+        Assert.All(dontUpdate, t => Assert.Equal("14.0,15.0,16.0", t.VersionFilter));
+
+        // The one fixed DDE path is not versioned, so it is not narrowed either.
+        var fixedPath = Assert.Single(dde.Targets, t => t.ValueName == "fNoCalclinksOnopen_90_1");
+        Assert.Null(fixedPath.AppFilter);
+        Assert.Null(fixedPath.VersionFilter);
+        Assert.DoesNotContain("%s", fixedPath.Path);
+    }
+
+    [Fact]
+    public void Every_filter_value_is_a_member_of_the_measures_product_universe()
+    {
+        // A typo in a filter would silently match nothing and quietly un-harden a product.
+        static string[] Split(string? value) => (value ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        Assert.All(MeasureCatalog.All, m =>
+        {
+            var apps = Split(m.Settings.GetValueOrDefault("Apps"));
+            var versions = Split(m.Settings.GetValueOrDefault("OfficeVersions"));
+            Assert.All(m.Targets.Where(t => t.AppFilter is not null),
+                t => Assert.All(Split(t.AppFilter), a => Assert.Contains(a, apps)));
+            Assert.All(m.Targets.Where(t => t.VersionFilter is not null),
+                t => Assert.All(Split(t.VersionFilter), v => Assert.Contains(v, versions)));
+        });
+    }
+
+    [Fact]
+    public void Exactly_one_target_hardens_to_the_empty_string()
+    {
+        // `SecureURL\Value` is the only legitimately empty hardened value (libreoffice.go:48).
+        // Pinning the count means a second blank cannot slip in unnoticed now that the
+        // non-blank assertion is gone.
+        Assert.Equal(1, MeasureCatalog.All.SelectMany(m => m.Targets).Count(t => t.HardenedValue.Length == 0));
+    }
+
+    [Fact]
+    public void Every_measure_has_at_least_one_availability_rule() =>
+        Assert.All(MeasureCatalog.All, m => Assert.NotEmpty(m.Availability));
+
 
     [Fact]
     public void Every_measure_has_a_non_empty_consequence_sentence() =>

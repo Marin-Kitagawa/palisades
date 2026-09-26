@@ -32,7 +32,6 @@ public static class MeasureCatalog
     private const string DdeApps = "Excel,Word";
     private const string DdeWordApp = "Word";
     private const string DdeExcelApp = "Excel";
-    private const string DdeWordAndExcelApps = "Word,Excel";
 
     // Office 2007 is in the discovery universe but upstream scopes every DDE sub-value that
     // is not WorkbookLinkWarnings to 2010 and later.
@@ -189,7 +188,7 @@ public static class MeasureCatalog
             // office.go:247-255: Excel only, on the full standard version list.
             Dword(RegistryRoot.CurrentUser, OfficeDdeSecurityPathTemplate, "WorkbookLinkWarnings", "2", DdeExcelApp),
             // office.go:260-272: Word and Excel, 2010 and later.
-            Dword(RegistryRoot.CurrentUser, OfficeOptionsPathTemplate, "DontUpdateLinks", "1", DdeWordAndExcelApps, DdeModernVersions),
+            Dword(RegistryRoot.CurrentUser, OfficeOptionsPathTemplate, "DontUpdateLinks", "1", DdeApps, DdeModernVersions),
             // office.go:273-285: Word only, 2010 and later. Outlook is reached through Word's
             // WordMail branch, so the app in the path is still Word.
             Dword(RegistryRoot.CurrentUser, OfficeWordMailPathTemplate, "DontUpdateLinks", "1", DdeWordApp, DdeModernVersions),
@@ -492,7 +491,7 @@ public static class MeasureCatalog
         new MeasureId("LibreOfficeEnforceUpdateChecks"),
         "LibreOffice Enforce Update Checks",
         "LibreOffice Enforce Update Checks",
-        "LibreOffice will check for updates every day instead of every week, and you will be reminded about them in the background. Note that the daily interval is written for parity with the Go tool, which records that this interval does not currently take effect through the registry and seems not to work in LibreOffice 7.5.4.",
+        "LibreOffice will check for updates every day instead of every week, and you will be reminded about them in the background. The daily interval does not currently take effect through the registry, and it did not work in LibreOffice 7.5.4; the weekly check is disabled regardless.",
         Mechanism.RegistryString,
         RequiresElevation: true,
         HardenByDefault: false,
@@ -511,7 +510,7 @@ public static class MeasureCatalog
         new MeasureId("LibreOfficeDisableUpdateLinks"),
         "LibreOffice Disable Links",
         "LibreOffice Disable Updates from Links",
-        "When you open a LibreOffice Writer or Calc document that pulls values from another file, those values will not be loaded until you update the links yourself. Note that LibreOffice honours this policy in Calc but not in Writer as of 7.5.4, so the Writer half is written for parity with the Go tool and may have no effect.",
+        "When you open a LibreOffice Writer or Calc document that pulls values from another file, those values will not be loaded until you update the links yourself. LibreOffice honours this policy in Calc but not in Writer as of 7.5.4, so in Writer the setting may have no effect.",
         Mechanism.RegistryString,
         RequiresElevation: true,
         HardenByDefault: false,

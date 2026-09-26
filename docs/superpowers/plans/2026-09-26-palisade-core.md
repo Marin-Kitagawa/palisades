@@ -334,12 +334,72 @@ public class MeasureCatalogTests
     public void Only_the_DDE_measure_narrows_its_targets()
     {
         // Versioned-path and LibreOffice measures apply to every discovered product upstream,
-        // so a filter on them would itself be a divergence.
+        // so a filter on them would itself be a divergence. Assert the id, not just the count:
+        // `Assert.Single` on the list would pass for a filter that had migrated to another
+        // single measure.
         var narrowing = MeasureCatalog.All
             .Where(m => m.Targets.Any(t => t.AppFilter is not null || t.VersionFilter is not null))
             .Select(m => m.Id.Value).ToList();
-        Assert.Single(narrowing);
+        Assert.Equal(["OfficeDde"], narrowing);
     }
+
+    [Fact]
+    public void DDE_narrowing_pins_the_exact_filter_values_upstream_uses()
+    {
+        // The filter values are the entire point of the narrowing, and nothing else in the
+        // suite observes them: editing the version list from 14/15/16 to 14/15 would drop DDE
+        // hardening from 17 registry writes to 11 with every other test still green. Values
+        // taken from office.go:154-292.
+        var dde = MeasureCatalog.All.Single(m => m.Id.Value == "OfficeDde");
+
+        var allowDde = Assert.Single(dde.Targets.Where(t => t.Path.Contains("AllowDDE", StringComparison.Ordinal)));
+        Assert.Equal("Word", allowDde.AppFilter);
+        Assert.Equal("14.0,15.0,16.0", allowDde.VersionFilter);
+
+        var workbook = Assert.Single(dde.Targets.Where(t => t.Path.Contains("WorkbookLinkWarnings", StringComparison.Ordinal)));
+        Assert.Equal("Excel", workbook.AppFilter);
+        Assert.Null(workbook.VersionFilter); // upstream uses the full standard list
+
+        // `DontUpdateLinks` appears twice: once scoped to Word+Excel, once Word-only (Outlook).
+        var dontUpdate = dde.Targets.Where(t => t.Path.Contains("DontUpdateLinks", StringComparison.Ordinal)).ToList();
+        Assert.Equal(2, dontUpdate.Count);
+        Assert.Contains(dontUpdate, t => t.AppFilter == "Word,Excel");
+        Assert.All(dontUpdate, t => Assert.Equal("14.0,15.0,16.0", t.VersionFilter));
+
+        // The one fixed DDE path is not versioned, so it is not narrowed either.
+        var fixedPath = Assert.Single(dde.Targets.Where(t => t.Path.Contains("Calclinks", StringComparison.OrdinalIgnoreCase)));
+        Assert.Null(fixedPath.AppFilter);
+        Assert.Null(fixedPath.VersionFilter);
+        Assert.DoesNotContain("%s", fixedPath.Path);
+    }
+
+    [Fact]
+    public void Every_filter_value_is_a_member_of_the_measures_product_universe()
+    {
+        // A typo in a filter would silently match nothing and quietly un-harden a product.
+        Assert.All(MeasureCatalog.All, m =>
+        {
+            var apps = (m.Settings.GetValueOrDefault("Apps") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var versions = (m.Settings.GetValueOrDefault("OfficeVersions") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            Assert.All(m.Targets.Where(t => t.AppFilter is not null),
+                t => Assert.All(t.AppFilter!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), a => Assert.Contains(a, apps)));
+            Assert.All(m.Targets.Where(t => t.VersionFilter is not null),
+                t => Assert.All(t.VersionFilter!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), v => Assert.Contains(v, versions)));
+        });
+    }
+
+    [Fact]
+    public void Exactly_one_target_hardens_to_the_empty_string()
+    {
+        // `SecureURL\Value` is the only legitimately empty hardened value (libreoffice.go:48).
+        // Pinning the count means a second blank cannot slip in unnoticed now that the
+        // non-blank assertion is gone.
+        Assert.Equal(1, MeasureCatalog.All.SelectMany(m => m.Targets).Count(t => t.HardenedValue.Length == 0));
+    }
+
+    [Fact]
+    public void Every_measure_has_at_least_one_availability_rule() =>
+        Assert.All(MeasureCatalog.All, m => Assert.NotEmpty(m.Availability));
 
     [Fact]
     public void Every_measure_has_a_non_empty_consequence_sentence() =>
@@ -989,7 +1049,14 @@ The authoritative table, transcribed from the Go source, giving for each version
 
 - [ ] **Step 4: Implement `VersionedPathHandler` and `InstalledVersionResolver`**
 
-`Resolve` reads each target's `Path` (which carries the `%s` placeholder) from `descriptor.Targets`, and the product universe from `descriptor.Settings["OfficeVersions"]` / `["Apps"]` / `["AdobeVersions"]`. It then narrows per target: a target with a non-null `AppFilter` or `VersionFilter` expands only over the intersection of the universe and that filter; a target with both null expands over the whole universe. One `ResolvedTarget` is returned per surviving (app, version) pair, with `%s` substituted. This is a single expansion path shared by the versioned-path measures and by DDE's per-sub-value `%s` paths — `office.go`'s `fNoCalclinksOnopen_90_1` is the one DDE path with no `%s`, and it is unaffected because there is nothing to substitute. It does **not** check whether the resulting registry key exists — that is `Detect`'s job, and conflating the two is what makes the Go tool report success on a machine with a version it does not know.
+`Resolve` reads each target's `Path` from `descriptor.Targets` and the product universe from `descriptor.Settings["OfficeVersions"]` / `["Apps"]` / `["AdobeVersions"]`. Expansion is driven by **the placeholders in the target's own `Path`**, never by whether the measure as a whole is versioned:
+
+- A `Path` containing `%s` is versioned. Narrow it by `AppFilter` / `VersionFilter` if either is non-null, cross the result with the universe, substitute `%s`, and return one `ResolvedTarget` per surviving pair. `%s` stands for the version, and the app appears in the surrounding path text.
+- A `Path` containing **no** `%s` is fixed. Return **exactly one** `ResolvedTarget`, substituting nothing — even if `AppFilter` or `VersionFilter` is set, and even if the descriptor's `Mechanism` is `VersionedPath`. This is the case for `office.go`'s `fNoCalclinksOnopen_90_1`, whose path is a hardcoded `12.0\Word\Options\vpref`.
+
+The second rule is the one that is easy to get wrong. Expanding a fixed path over the version list would produce one write per version to the *same* registry key — 4 versions x 2 apps = 8 writes to a single `12.0` key. `MeasureCatalog.cs:181` gives that measure `Mechanism.VersionedPath`, which is exactly the signal that invites the wrong implementation, so the placeholder test is on the path and never on the mechanism.
+
+`Resolve` does **not** check whether the resulting registry key exists — that is `Detect`'s job, and conflating the two is what makes the Go tool report success on a machine with a version it does not know.
 
 `InstalledVersionResolver` enumerates directory names under the Office and Adobe install roots, matching the shape the templates expect, and returns the distinct version tokens found.
 
