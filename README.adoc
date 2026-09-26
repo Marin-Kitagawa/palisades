@@ -5,7 +5,7 @@
 :source-highlighter: highlight.js
 :imagesdir: graphics
 
-image:logo-final-256.png[Palisade logo,128,align=center]
+image::logo-final-256.png[Palisade logo,160,align=center]
 
 ifdef::badges[]
 image:https://img.shields.io/badge/license-GPLv3-blue.svg[License GPLv3,link=LICENSE.txt]
@@ -35,7 +35,7 @@ It reduces the attack surface — nothing more, and it says so honestly.
 ====
 
 '''
-image::palisade-fluent4.png[The Palisade hardening surface,align=center]
+image::screenshot-harden.png[The Palisade hardening surface,align=center]
 
 == Why "Palisade"
 

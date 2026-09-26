@@ -103,10 +103,8 @@ public partial class ShellViewModel : ObservableObject
             : Navigation.FirstOrDefault(n => n.Tag == requested) ?? Navigation[0];
         CurrentPage = SelectedNav.CreateView();
 
-        if (IsDarkTheme)
-        {
-            Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
-        }
+        // The toggle is authoritative: off = light, on = dark (never follow the OS).
+        Application.Current!.RequestedThemeVariant = IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
     }
 
     partial void OnSelectedNavChanged(NavItemViewModel? value)
