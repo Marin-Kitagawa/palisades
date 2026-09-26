@@ -9,9 +9,9 @@
   <!-- ============ Buttons ============ -->
 
   <Style Selector="Button">
-    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource ControlStrokeBrush}" />
+    <Setter Property="Background" Value="{DynamicResource LayerBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="4" />
     <Setter Property="Padding" Value="12,5" />
@@ -29,29 +29,29 @@
   </Style>
   <Style Selector="Button:pressed /template/ ContentPresenter">
     <Setter Property="Background" Value="#F5F5F5" />
-    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
     <Setter Property="BorderBrush" Value="#CCCCCC" />
   </Style>
   <Style Selector="Button:disabled">
     <Setter Property="Opacity" Value="0.4" />
   </Style>
   <Style Selector="Button:focus /template/ ContentPresenter">
-    <Setter Property="BorderBrush" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
   </Style>
 
   <!-- Accent -->
   <Style Selector="Button.accent">
-    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource TextOnAccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
   <Style Selector="Button.accent:pressed /template/ ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource AccentPressedBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
 
@@ -61,14 +61,14 @@
     <Setter Property="BorderThickness" Value="0" />
   </Style>
   <Style Selector="Button.subtle:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource SubtleFillHoverBrush}" />
+    <Setter Property="Background" Value="{DynamicResource SubtleFillHoverBrush}" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
 
   <!-- ============ ToggleSwitch (WinUI) ============ -->
 
   <Style Selector="ToggleSwitch">
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
     <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
     <Setter Property="MinHeight" Value="20" />
@@ -78,7 +78,7 @@
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
           <Grid Width="40" Height="20">
             <Border x:Name="Track" CornerRadius="10"
-                    Background="{StaticResource LayerBrush}"
+                    Background="{DynamicResource LayerBrush}"
                     BorderBrush="#8A8A8A" BorderThickness="1" />
             <Panel x:Name="PART_MovingKnobs" HorizontalAlignment="Left" Margin="3,0,0,0">
               <Ellipse x:Name="Knob" Width="12" Height="12" Fill="#5D5D5D" />
@@ -92,11 +92,11 @@
     </Setter>
   </Style>
   <Style Selector="ToggleSwitch:checked /template/ Border#Track">
-    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
   <Style Selector="ToggleSwitch:checked /template/ Ellipse#Knob">
-    <Setter Property="Fill" Value="{StaticResource TextOnAccentBrush}" />
+    <Setter Property="Fill" Value="{DynamicResource TextOnAccentBrush}" />
   </Style>
   <Style Selector="ToggleSwitch:checked /template/ Panel#PART_MovingKnobs">
     <Setter Property="HorizontalAlignment" Value="Right" />
@@ -109,13 +109,13 @@
     <Setter Property="Opacity" Value="0.4" />
   </Style>
   <Style Selector="ToggleSwitch:focus /template/ Border#Track">
-    <Setter Property="BorderBrush" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
   </Style>
 
   <!-- ============ CheckBox (WinUI) ============ -->
 
   <Style Selector="CheckBox">
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Padding" Value="8,0,0,0" />
     <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
@@ -126,11 +126,11 @@
       <ControlTemplate>
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
           <Border x:Name="Box" Width="20" Height="20" CornerRadius="4" VerticalAlignment="Center"
-                  Background="{StaticResource LayerBrush}"
+                  Background="{DynamicResource LayerBrush}"
                   BorderBrush="#8A8A8A" BorderThickness="1">
             <Panel>
               <Path x:Name="CheckMark" Data="M3,9.5 L7.5,14 L16,4.5" IsVisible="False"
-                    Stroke="{StaticResource TextOnAccentBrush}" StrokeThickness="1.6"
+                    Stroke="{DynamicResource TextOnAccentBrush}" StrokeThickness="1.6"
                     StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" />
             </Panel>
           </Border>
@@ -143,8 +143,8 @@
     </Setter>
   </Style>
   <Style Selector="CheckBox:checked /template/ Border#Box">
-    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
   </Style>
   <Style Selector="CheckBox:checked /template/ Border#Box Path#CheckMark">
     <Setter Property="IsVisible" Value="True" />
@@ -156,27 +156,27 @@
     <Setter Property="Opacity" Value="0.4" />
   </Style>
   <Style Selector="CheckBox:focus /template/ Border#Box">
-    <Setter Property="BorderBrush" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="BorderThickness" Value="2" />
   </Style>
 
   <!-- ============ TextBox ============ -->
 
   <Style Selector="TextBox">
-    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource ControlStrokeBrush}" />
+    <Setter Property="Background" Value="{DynamicResource LayerBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
     <Setter Property="BorderThickness" Value="1,1,1,1" />
     <Setter Property="CornerRadius" Value="4" />
     <Setter Property="MinHeight" Value="32" />
     <Setter Property="Padding" Value="10,6" />
     <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
     <Setter Property="FontSize" Value="{StaticResource TypeBody}" />
-    <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}" />
-    <Setter Property="SelectionBrush" Value="{StaticResource AccentSoftBrush}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource AccentSoftBrush}" />
   </Style>
   <Style Selector="TextBox:focus">
-    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderThickness" Value="1,1,1,2" />
   </Style>
 
@@ -209,9 +209,9 @@
   <!-- ============ ToolTip ============ -->
 
   <Style Selector="ToolTip">
-    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource ControlStrokeBrush}" />
+    <Setter Property="Background" Value="{DynamicResource LayerBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="4" />
     <Setter Property="Padding" Value="12,8" />
@@ -223,19 +223,19 @@
 
   <Style Selector="TextBlock">
     <Setter Property="FontFamily" Value="{StaticResource UiFace}" />
-    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
   <Style Selector="TextBlock.secondary">
-    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
   </Style>
   <Style Selector="TextBlock.tertiary">
-    <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
   </Style>
   <Style Selector="TextBlock.mono">
     <Setter Property="FontFamily" Value="{StaticResource MonoFace}" />
     <Setter Property="FontSize" Value="{StaticResource TypeMono}" />
-    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
   </Style>
   <Style Selector="TextBlock.pageTitle">
     <Setter Property="FontSize" Value="{StaticResource TypeTitle}" />
@@ -249,8 +249,8 @@
   <!-- ============ Card ============ -->
 
   <Style Selector="Border.card">
-    <Setter Property="Background" Value="{StaticResource LayerBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource CardStrokeBrush}" />
+    <Setter Property="Background" Value="{DynamicResource LayerBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Padding" Value="16" />
@@ -259,8 +259,8 @@
     <Setter Property="BorderBrush" Value="#D6D6D6" />
   </Style>
   <Style Selector="Border.cardSelected">
-    <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
   </Style>
 
 </Styles>

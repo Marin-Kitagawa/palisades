@@ -1,4 +1,4 @@
-﻿// Palisade
+// Palisade
 // Copyright (C) 2017-2023 Security Without Borders
 //
 // This program is free software: you can redistribute it and/or modify
@@ -24,8 +24,8 @@ namespace Palisade.App.ViewModels;
 public class ConfiguredToBrushConverter : IValueConverter
 {
     public static readonly ConfiguredToBrushConverter Instance = new();
-    private static readonly IBrush On = new SolidColorBrush(Color.Parse("#C42B1C"));
-    private static readonly IBrush Off = new SolidColorBrush(Color.Parse("#0F7B0F"));
+    private static IBrush On => ThemePalette.Error;
+    private static IBrush Off => ThemePalette.Success;
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is true ? On : Off;
@@ -48,8 +48,8 @@ public class BoolToFullOpacityConverter : IValueConverter
 public class EnabledToBrushConverter : IValueConverter
 {
     public static readonly EnabledToBrushConverter Instance = new();
-    private static readonly IBrush On = new SolidColorBrush(Color.Parse("#0F7B0F"));
-    private static readonly IBrush Off = new SolidColorBrush(Color.Parse("#9D5D00"));
+    private static IBrush On => ThemePalette.Success;
+    private static IBrush Off => ThemePalette.Warning;
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is true ? On : Off;
@@ -61,9 +61,9 @@ public class EnabledToBrushConverter : IValueConverter
 public class HealthToBrushConverter : IValueConverter
 {
     public static readonly HealthToBrushConverter Instance = new();
-    private static readonly IBrush Healthy = new SolidColorBrush(Color.Parse("#0F7B0F"));
-    private static readonly IBrush Bad = new SolidColorBrush(Color.Parse("#C42B1C"));
-    private static readonly IBrush Unknown = new SolidColorBrush(Color.Parse("#8A8A8A"));
+    private static IBrush Healthy => ThemePalette.Success;
+    private static IBrush Bad => ThemePalette.Error;
+    private static IBrush Unknown => ThemePalette.Warning;
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value switch

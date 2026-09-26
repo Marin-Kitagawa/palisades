@@ -31,12 +31,12 @@
                              Fill="{Binding IsEnabled, Converter={x:Static vm:EnabledToBrushConverter.Instance}}" />
                     <TextBlock Text="{Binding Name}" Classes="cardTitle" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding Impact}" FontSize="11" VerticalAlignment="Center"
-                               Foreground="{StaticResource TextTertiaryBrush}" />
+                               Foreground="{DynamicResource TextTertiaryBrush}" />
                   </StackPanel>
                   <TextBlock Text="{Binding Publisher}" Classes="secondary" FontSize="{StaticResource TypeCaption}" />
                   <TextBlock Text="{Binding Command}" Classes="mono tertiary" TextWrapping="Wrap" />
                   <TextBlock Text="{Binding Location}" Classes="mono small" FontSize="10.5"
-                             Foreground="{StaticResource TextTertiaryBrush}" />
+                             Foreground="{DynamicResource TextTertiaryBrush}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
                   <Button Classes="subtle" Content="Remove" MinWidth="0" Padding="8,4"

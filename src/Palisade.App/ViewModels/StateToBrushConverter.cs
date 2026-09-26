@@ -29,10 +29,10 @@ public class StateToBrushConverter : IValueConverter
 {
     public static readonly StateToBrushConverter Instance = new();
 
-    private static readonly IBrush Success = new SolidColorBrush(Color.Parse("#0F7B0F"));
-    private static readonly IBrush Neutral = new SolidColorBrush(Color.Parse("#5D5D5D"));
-    private static readonly IBrush Error = new SolidColorBrush(Color.Parse("#C42B1C"));
-    private static readonly IBrush Warning = new SolidColorBrush(Color.Parse("#9D5D00"));
+    private static IBrush Success => ThemePalette.Success;
+    private static IBrush Neutral => ThemePalette.Neutral;
+    private static IBrush Error => ThemePalette.Error;
+    private static IBrush Warning => ThemePalette.Warning;
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         value is MeasureState state ? state switch

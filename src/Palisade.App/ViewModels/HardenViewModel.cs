@@ -59,6 +59,14 @@ public partial class HardenViewModel : ObservableObject
         Confirm = new ConfirmationViewModel();
         Receipt = new ReceiptViewModel();
 
+        Avalonia.Application.Current!.ActualThemeVariantChanged += (_, _) =>
+        {
+            foreach (var rod in Rods)
+            {
+                rod.ApplyStateVisuals(rod.State);
+            }
+        };
+
         foreach (var rod in Rods)
         {
             rod.PropertyChanged += (_, e) =>

@@ -19,8 +19,8 @@
                Text="{Binding SearchText, Mode=TwoWay}" VerticalAlignment="Top" />
     </Grid>
 
-    <Border Grid.Row="1" Background="{StaticResource LayerAltBrush}" CornerRadius="6" Padding="12,9"
-            BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1" Margin="0,0,0,12">
+    <Border Grid.Row="1" Background="{DynamicResource LayerAltBrush}" CornerRadius="6" Padding="12,9"
+            BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1" Margin="0,0,0,12">
       <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
         <CheckBox IsChecked="{Binding ShowUwp, Mode=TwoWay}" Content="Store apps" VerticalAlignment="Center" />
         <CheckBox Grid.Column="1" IsChecked="{Binding ShowWin32, Mode=TwoWay}" Content="Win32 apps"
@@ -40,14 +40,14 @@
           <DataTemplate x:DataType="vm:DebloatAppViewModel">
             <Border Classes="card" Margin="0,0,0,6" Padding="12,9">
               <Grid ColumnDefinitions="Auto,*,Auto">
-                <Border Background="{StaticResource AccentSoftBrush}" CornerRadius="3" Padding="6,1"
+                <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="3" Padding="6,1"
                         VerticalAlignment="Center">
-                  <TextBlock Text="{Binding Type}" FontSize="11" Foreground="{StaticResource AccentTextBrush}" />
+                  <TextBlock Text="{Binding Type}" FontSize="11" Foreground="{DynamicResource AccentTextBrush}" />
                 </Border>
                 <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
                            Margin="10,0,0,0" TextWrapping="Wrap" />
                 <Button Grid.Column="2" Classes="subtle" Content="Uninstall" MinWidth="0" Padding="8,4"
-                        Foreground="{StaticResource ErrorBrush}"
+                        Foreground="{DynamicResource ErrorBrush}"
                         Command="{Binding $parent[UserControl].((vm:DebloatViewModel)DataContext).UninstallCommand}"
                         CommandParameter="{Binding}" />
               </Grid>

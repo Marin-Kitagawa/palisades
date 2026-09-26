@@ -1,30 +1,97 @@
 <!--
-  Palisade
-  Copyright (C) 2017-2023 Security Without Borders
-
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  Palisade — themed tokens (Light/Dark) for the Fluent world.
+  Same keys in both variants; controls bind via DynamicResource.
+  Faces and the type scale don't vary, so they live outside the dictionaries.
 -->
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Palisade.App.App"
-             RequestedThemeVariant="Light">
+             xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
   <Application.Resources>
     <ResourceDictionary>
-      <ResourceDictionary.MergedDictionaries>
-        <ResourceInclude Source="/Themes/Tokens.axaml" />
-      </ResourceDictionary.MergedDictionaries>
+
+      <!-- Faces + type scale: variant-independent, StaticResource-visible -->
+      <FontFamily x:Key="UiFace">Segoe UI Variable Display, Segoe UI Variable Text, Segoe UI</FontFamily>
+      <FontFamily x:Key="MonoFace">Cascadia Mono, Consolas, Courier New</FontFamily>
+      <FontFamily x:Key="IconFace">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+      <sys:Double x:Key="TypeCaption">12</sys:Double>
+      <sys:Double x:Key="TypeBody">14</sys:Double>
+      <sys:Double x:Key="TypeBodyStrong">14</sys:Double>
+      <sys:Double x:Key="TypeSubtitle">20</sys:Double>
+      <sys:Double x:Key="TypeTitle">28</sys:Double>
+      <sys:Double x:Key="TypeDisplay">40</sys:Double>
+      <sys:Double x:Key="TypeMono">11.5</sys:Double>
+
+      <ResourceDictionary.ThemeDictionaries>
+
+        <!-- ==================== LIGHT ==================== -->
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="BgBaseBrush" Color="#F3F3F3" />
+          <SolidColorBrush x:Key="LayerBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="LayerAltBrush" Color="#FBFBFB" />
+          <SolidColorBrush x:Key="SmokeBrush" Color="#90000000" />
+          <SolidColorBrush x:Key="SubtleFillBrush" Color="#0A000000" />
+          <SolidColorBrush x:Key="SubtleFillHoverBrush" Color="#14000000" />
+          <SolidColorBrush x:Key="CardStrokeBrush" Color="#EBEBEB" />
+          <SolidColorBrush x:Key="ControlStrokeBrush" Color="#E1E1E1" />
+          <SolidColorBrush x:Key="DividerStrokeBrush" Color="#EEEEEE" />
+          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1B1B" />
+          <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5D5D5D" />
+          <SolidColorBrush x:Key="TextTertiaryBrush" Color="#8A8A8A" />
+          <SolidColorBrush x:Key="TextDisabledBrush" Color="#B6B6B6" />
+          <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="AccentBrush" Color="#0078D4" />
+          <SolidColorBrush x:Key="AccentHoverBrush" Color="#1A86D9" />
+          <SolidColorBrush x:Key="AccentPressedBrush" Color="#005FB1" />
+          <SolidColorBrush x:Key="AccentTextBrush" Color="#0067C0" />
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#EAF3FC" />
+          <SolidColorBrush x:Key="SuccessBrush" Color="#0F7B0F" />
+          <SolidColorBrush x:Key="SuccessSoftBrush" Color="#EFF7EF" />
+          <SolidColorBrush x:Key="WarningBrush" Color="#9D5D00" />
+          <SolidColorBrush x:Key="WarningSoftBrush" Color="#FDF6EC" />
+          <SolidColorBrush x:Key="ErrorBrush" Color="#C42B1C" />
+          <SolidColorBrush x:Key="ErrorSoftBrush" Color="#FDF3F2" />
+          <SolidColorBrush x:Key="FigInkBrush" Color="#1B1B1B" />
+          <SolidColorBrush x:Key="FigSecondaryBrush" Color="#5D5D5D" />
+          <SolidColorBrush x:Key="FigAccentBrush" Color="#0078D4" />
+          <SolidColorBrush x:Key="FigStrokeBrush" Color="#D6D6D6" />
+        </ResourceDictionary>
+
+        <!-- ==================== DARK ==================== -->
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="BgBaseBrush" Color="#202020" />
+          <SolidColorBrush x:Key="LayerBrush" Color="#2B2B2B" />
+          <SolidColorBrush x:Key="LayerAltBrush" Color="#333333" />
+          <SolidColorBrush x:Key="SmokeBrush" Color="#90000000" />
+          <SolidColorBrush x:Key="SubtleFillBrush" Color="#14FFFFFF" />
+          <SolidColorBrush x:Key="SubtleFillHoverBrush" Color="#1FFFFFFF" />
+          <SolidColorBrush x:Key="CardStrokeBrush" Color="#3D3D3D" />
+          <SolidColorBrush x:Key="ControlStrokeBrush" Color="#4A4A4A" />
+          <SolidColorBrush x:Key="DividerStrokeBrush" Color="#383838" />
+          <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="TextSecondaryBrush" Color="#CFCFCF" />
+          <SolidColorBrush x:Key="TextTertiaryBrush" Color="#9A9A9A" />
+          <SolidColorBrush x:Key="TextDisabledBrush" Color="#6D6D6D" />
+          <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="AccentBrush" Color="#429CE3" />
+          <SolidColorBrush x:Key="AccentHoverBrush" Color="#63B0ED" />
+          <SolidColorBrush x:Key="AccentPressedBrush" Color="#2B72C0" />
+          <SolidColorBrush x:Key="AccentTextBrush" Color="#99CCF3" />
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#1C3A55" />
+          <SolidColorBrush x:Key="SuccessBrush" Color="#6CCB5F" />
+          <SolidColorBrush x:Key="SuccessSoftBrush" Color="#206CCB5F" />
+          <SolidColorBrush x:Key="WarningBrush" Color="#FDB54E" />
+          <SolidColorBrush x:Key="WarningSoftBrush" Color="#20FDB54E" />
+          <SolidColorBrush x:Key="ErrorBrush" Color="#FF7A70" />
+          <SolidColorBrush x:Key="ErrorSoftBrush" Color="#20FF7A70" />
+          <SolidColorBrush x:Key="FigInkBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="FigSecondaryBrush" Color="#C9C9C9" />
+          <SolidColorBrush x:Key="FigAccentBrush" Color="#429CE3" />
+          <SolidColorBrush x:Key="FigStrokeBrush" Color="#5F5F5F" />
+        </ResourceDictionary>
+
+      </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
   </Application.Resources>
 

@@ -31,6 +31,11 @@ namespace Palisade.App.Controls;
 /// </summary>
 public class BlastRadius : Control
 {
+    public BlastRadius()
+    {
+        ActualThemeVariantChanged += (_, _) => InvalidateVisual();
+    }
+
     public static readonly StyledProperty<MeasureDescriptor?> SelectedProperty =
         AvaloniaProperty.Register<BlastRadius, MeasureDescriptor?>(nameof(Selected));
 
@@ -52,12 +57,19 @@ public class BlastRadius : Control
     }
 
     private static readonly Typeface MonoType = new(FontFamily.Parse("Consolas, Courier New"));
-    private static readonly IBrush InkPrimary = new SolidColorBrush(Color.Parse("#1B1B1B"));
-    private static readonly IBrush Ink2 = new SolidColorBrush(Color.Parse("#5D5D5D"));
-    private static readonly IBrush Accent = new SolidColorBrush(Color.Parse("#0078D4"));
-    private static readonly IBrush LineStrong = new SolidColorBrush(Color.Parse("#D6D6D6"));
-    private static readonly Pen EdgePen = new(LineStrong, 1);
-    private static readonly Pen EdgeAccentPen = new(Accent, 1.2);
+
+    private static IBrush Brush(string key)
+    {
+        if (Application.Current is { } app
+            && app.Resources.TryGetResource(key, app.ActualThemeVariant, out var v)
+            && v is IBrush b)
+        {
+            return b;
+        }
+        return Brushes.Gray;
+    }
+
+
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs e)
     {
@@ -70,6 +82,11 @@ public class BlastRadius : Control
 
     public override void Render(DrawingContext context)
     {
+        var ink = Brush("FigInkBrush");
+        var ink2 = Brush("FigSecondaryBrush");
+        var accent = Brush("FigAccentBrush");
+        var edgePen = new Pen(Brush("FigStrokeBrush"), 1);
+        var edgeAccentPen = new Pen(accent, 1.2);
         var selected = Selected;
         var catalog = Catalog;
         if (selected is null || catalog is null)
@@ -99,15 +116,15 @@ public class BlastRadius : Control
 
         // Selected node: accent square, ink ring.
         var originRect = new Rect(origin.X - nodeSize / 2, origin.Y - nodeSize / 2, nodeSize, nodeSize);
-        context.FillRectangle(Accent, originRect);
-        context.DrawRectangle(new Pen(InkPrimary, 1), originRect.Deflate(-3));
+        context.FillRectangle(accent, originRect);
+        context.DrawRectangle(new Pen(ink, 1), originRect.Deflate(-3));
 
-        DrawWrapped(context, selected.Name, 11.5, InkPrimary, width - 60, new Point(origin.X + 14, origin.Y - 18));
-        DrawWrapped(context, selected.Id.Value, 10, Ink2, width - 60, new Point(origin.X + 14, origin.Y + 2));
+        DrawWrapped(context, selected.Name, 11.5, ink, width - 60, new Point(origin.X + 14, origin.Y - 18));
+        DrawWrapped(context, selected.Id.Value, 10, ink2, width - 60, new Point(origin.X + 14, origin.Y + 2));
 
         if (forward.Count == 0 && backward.Count == 0)
         {
-            DrawWrapped(context, "no declared constraints - this rod stands alone", 10.5, Ink2, width - 60,
+            DrawWrapped(context, "no declared constraints - this rod stands alone", 10.5, ink2, width - 60,
                 new Point(origin.X + 14, origin.Y + 20));
             return;
         }
@@ -133,17 +150,17 @@ public class BlastRadius : Control
         foreach (var (name, reason, isForward) in rows)
         {
             var node = new Rect(nodeX - nodeSize / 2, y - nodeSize / 2, nodeSize, nodeSize);
-            var pen = isForward ? EdgeAccentPen : EdgePen;
+            var pen = isForward ? edgeAccentPen : edgePen;
 
             double midX = (origin.X + 20 + nodeX - 8) / 2;
             context.DrawLine(pen, new Point(origin.X + nodeSize / 2 + 3, origin.Y), new Point(midX, origin.Y));
             context.DrawLine(pen, new Point(midX, origin.Y), new Point(midX, y));
             context.DrawLine(pen, new Point(midX, y), new Point(nodeX - nodeSize / 2 - 3, y));
 
-            context.FillRectangle(isForward ? Accent : InkPrimary, node);
+            context.FillRectangle(isForward ? accent : ink, node);
 
-            DrawWrapped(context, name, 11, InkPrimary, width - nodeX - 26, new Point(nodeX + 12, y - 16));
-            DrawWrapped(context, reason, 9.5, Ink2, width - nodeX - 26, new Point(nodeX + 12, y + 3));
+            DrawWrapped(context, name, 11, ink, width - nodeX - 26, new Point(nodeX + 12, y - 16));
+            DrawWrapped(context, reason, 9.5, ink2, width - nodeX - 26, new Point(nodeX + 12, y + 3));
 
             y += rowPitch;
         }
@@ -151,7 +168,7 @@ public class BlastRadius : Control
 
     private void DrawEmptyState(DrawingContext context)
     {
-        DrawWrapped(context, "select a rod to see the forces it carries", 11.5, Ink2,
+        DrawWrapped(context, "select a rod to see the forces it carries", 11.5, Brush("FigSecondaryBrush"),
             Math.Max(40, Bounds.Width - 24), new Point(16, 20));
     }
 

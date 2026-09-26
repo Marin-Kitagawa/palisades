@@ -11,7 +11,7 @@
         Title="Palisade — reversible hardening"
         Width="1280" Height="860" MinWidth="1080" MinHeight="700"
         Icon="avares://Palisade/Assets/palisade.ico"
-        Background="{StaticResource BgBaseBrush}"
+        Background="{DynamicResource BgBaseBrush}"
         FontFamily="{StaticResource UiFace}">
 
   <Window.Styles>
@@ -24,7 +24,7 @@
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="FocusAdorner" Value="{x:Null}" />
@@ -45,28 +45,28 @@
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:pointerover">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:selected">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:selected:pointerover">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:selected:focus">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:pointerover /template/ Border#ItemBg">
-      <Setter Property="Background" Value="{StaticResource SubtleFillBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SubtleFillBrush}" />
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:selected /template/ Border#ItemBg">
-      <Setter Property="Background" Value="{StaticResource SubtleFillBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SubtleFillBrush}" />
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:selected /template/ Border#Pill">
-      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     </Style>
 
     <Style Selector="ListBox#NavRail ListBoxItem /template/ ContentPresenter">
@@ -82,7 +82,7 @@
       <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="ListBox#NavRail ListBoxItem:selected /template/ Border#ItemBg">
-      <Setter Property="Background" Value="{StaticResource SubtleFillBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SubtleFillBrush}" />
     </Style>
 
     <Style Selector="TextBlock.wordmark">
@@ -94,13 +94,13 @@
     </Style>
     <Style Selector="TextBlock.navSub">
       <Setter Property="FontSize" Value="{StaticResource TypeCaption}" />
-      <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
     </Style>
     <Style Selector="TextBlock.navIcon">
       <Setter Property="FontFamily" Value="{StaticResource IconFace}" />
       <Setter Property="FontSize" Value="16" />
       <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
     </Style>
   </Window.Styles>
 
@@ -117,10 +117,10 @@
           <TextBlock Classes="wordmark" Text="Palisade" VerticalAlignment="Center" />
         </StackPanel>
 
-        <!-- Privilege state -->
+        <!-- Privilege state + dark mode -->
         <StackPanel Grid.Row="1" Margin="20,10,16,0" Spacing="8">
-          <Border Background="{StaticResource LayerBrush}"
-                  BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1"
+          <Border Background="{DynamicResource LayerBrush}"
+                  BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1"
                   CornerRadius="6" Padding="12,10">
             <StackPanel Spacing="8">
               <TextBlock Classes="navSub" Text="{Binding PrivilegeLine}" TextWrapping="Wrap" />
@@ -130,9 +130,11 @@
                       IsVisible="{Binding IsElevated, Converter={x:Static BoolConverters.Not}}"
                       Command="{Binding RelaunchElevatedCommand}"
                       HorizontalAlignment="Left"
-                      Foreground="{StaticResource AccentTextBrush}" />
+                      Foreground="{DynamicResource AccentTextBrush}" />
             </StackPanel>
           </Border>
+          <ToggleSwitch IsChecked="{Binding IsDarkTheme, Mode=TwoWay}" Content="Dark mode"
+                        HorizontalAlignment="Left" />
         </StackPanel>
 
         <!-- Navigation -->
@@ -160,11 +162,11 @@
     </Border>
 
     <Border Grid.Column="0" Width="1" HorizontalAlignment="Right"
-            Background="{StaticResource DividerStrokeBrush}" />
+            Background="{DynamicResource DividerStrokeBrush}" />
 
     <!-- ===================== Content frame ===================== -->
-    <Border Grid.Column="2" Background="{StaticResource LayerBrush}"
-            CornerRadius="8,0,0,0" BorderBrush="{StaticResource CardStrokeBrush}"
+    <Border Grid.Column="2" Background="{DynamicResource LayerBrush}"
+            CornerRadius="8,0,0,0" BorderBrush="{DynamicResource CardStrokeBrush}"
             BorderThickness="1,1,0,0" Margin="0,8,0,0">
       <ContentControl Content="{Binding CurrentPage}" HorizontalContentAlignment="Stretch" />
     </Border>

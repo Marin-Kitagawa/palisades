@@ -19,8 +19,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
 using Palisade.App.Views;
 
 namespace Palisade.App.ViewModels;
@@ -41,6 +43,37 @@ public partial class ShellViewModel : ObservableObject
     public bool IsElevated { get; } = IsRunningElevated();
 
     public string PrivilegeLine { get; }
+
+    /// <summary>Persisted dark-mode preference.</summary>
+    [ObservableProperty]
+    private bool _isDarkTheme = ReadDarkPreference();
+
+    partial void OnIsDarkThemeChanged(bool value)
+    {
+        Application.Current!.RequestedThemeVariant = value ? ThemeVariant.Dark : ThemeVariant.Light;
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey("SOFTWARE\\Palisade\\UI");
+            key.SetValue("DarkMode", value ? 1 : 0, RegistryValueKind.DWord);
+        }
+        catch
+        {
+            // Preference persistence is best-effort.
+        }
+    }
+
+    private static bool ReadDarkPreference()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Palisade\\UI");
+            return key?.GetValue("DarkMode") is int v && v == 1;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public IReadOnlyList<NavItemViewModel> Navigation { get; }
 
@@ -69,6 +102,11 @@ public partial class ShellViewModel : ObservableObject
             ? Navigation[0]
             : Navigation.FirstOrDefault(n => n.Tag == requested) ?? Navigation[0];
         CurrentPage = SelectedNav.CreateView();
+
+        if (IsDarkTheme)
+        {
+            Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        }
     }
 
     partial void OnSelectedNavChanged(NavItemViewModel? value)

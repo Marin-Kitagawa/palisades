@@ -23,10 +23,10 @@
       </StackPanel>
     </Grid>
 
-    <Border Grid.Row="1" Background="{StaticResource LayerAltBrush}" CornerRadius="6" Padding="12,9"
-            BorderBrush="{StaticResource CardStrokeBrush}" BorderThickness="1" Margin="0,0,0,12">
+    <Border Grid.Row="1" Background="{DynamicResource LayerAltBrush}" CornerRadius="6" Padding="12,9"
+            BorderBrush="{DynamicResource CardStrokeBrush}" BorderThickness="1" Margin="0,0,0,12">
       <Grid ColumnDefinitions="Auto,*">
-        <TextBlock Classes="navIcon" Text="&#xE946;" Foreground="{StaticResource AccentBrush}"
+        <TextBlock Classes="navIcon" Text="&#xE946;" Foreground="{DynamicResource AccentBrush}"
                    VerticalAlignment="Center" Margin="0,0,10,0" />
         <TextBlock Grid.Column="1" Classes="infoText secondary" Text="{Binding StatusLine}"
                    TextWrapping="Wrap" VerticalAlignment="Center" />

@@ -26,13 +26,13 @@
                            Fill="{Binding Health, Converter={x:Static vm:HealthToBrushConverter.Instance}}" />
                   <TextBlock Text="{Binding Name}" Classes="cardTitle" VerticalAlignment="Center" />
                   <TextBlock Text="— Windows image" FontSize="12" VerticalAlignment="Center"
-                             Foreground="{StaticResource TextTertiaryBrush}"
+                             Foreground="{DynamicResource TextTertiaryBrush}"
                              IsVisible="{Binding Name, Converter={x:Static vm:DismNameConverter.Instance}}" />
                   <TextBlock Text="— System files" FontSize="12" VerticalAlignment="Center"
-                             Foreground="{StaticResource TextTertiaryBrush}"
+                             Foreground="{DynamicResource TextTertiaryBrush}"
                              IsVisible="{Binding Name, Converter={x:Static vm:SfcNameConverter.Instance}}" />
                   <TextBlock Text="— System drive" FontSize="12" VerticalAlignment="Center"
-                             Foreground="{StaticResource TextTertiaryBrush}"
+                             Foreground="{DynamicResource TextTertiaryBrush}"
                              IsVisible="{Binding Name, Converter={x:Static vm:ChkdskNameConverter.Instance}}" />
                 </StackPanel>
                 <TextBlock Grid.Column="1" Classes="mono" Text="{Binding HealthWord}"

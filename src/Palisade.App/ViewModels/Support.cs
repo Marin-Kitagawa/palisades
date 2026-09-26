@@ -15,6 +15,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Concurrent;
+using Avalonia;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Palisade.Core;
 using Palisade.Core.Engine;
@@ -22,6 +24,42 @@ using Palisade.Core.Models;
 using Palisade.Core.Registry;
 
 namespace Palisade.App.ViewModels;
+
+/// <summary>
+/// Theme-aware brushes: resolves from the active variant's theme dictionary,
+/// so dark mode needs no code changes at the call sites.
+/// </summary>
+public static class ThemePalette
+{
+    private static IBrush Get(string key)
+    {
+        if (Application.Current is { } app
+            && app.Resources.TryGetResource(key, app.ActualThemeVariant, out var value)
+            && value is IBrush brush)
+        {
+            return brush;
+        }
+        return Brushes.Gray;
+    }
+
+    public static IBrush Success => Get("SuccessBrush");
+    public static IBrush Warning => Get("WarningBrush");
+    public static IBrush Error => Get("ErrorBrush");
+    public static IBrush Neutral => Get("TextSecondaryBrush");
+    public static IBrush SuccessSoft => Get("SuccessSoftBrush");
+    public static IBrush WarningSoft => Get("WarningSoftBrush");
+    public static IBrush ErrorSoft => Get("ErrorSoftBrush");
+    public static IBrush NeutralSoft => Get("LayerAltBrush");
+
+    public static (IBrush Brush, IBrush Soft) ForState(MeasureState state) => state switch
+    {
+        MeasureState.Taut => (Success, SuccessSoft),
+        MeasureState.Slack => (Neutral, NeutralSoft),
+        MeasureState.Stressed => (Error, ErrorSoft),
+        MeasureState.Unavailable => (Warning, WarningSoft),
+        _ => (Neutral, NeutralSoft),
+    };
+}
 
 /// <summary>
 /// The engine surface the UI binds to. Mirrors the frozen
@@ -261,27 +299,7 @@ public partial class RodViewModel : ObservableObject
         RecordedOriginal = BuildRecordedOriginal();
     }
 
-    private void ApplyStateVisuals(MeasureState state)
-    {
-        StateWord = WordFor(state);
-        (StateBrush, StateSoftBrush) = state switch
-        {
-            MeasureState.Taut => (SuccessBrush, SuccessSoftBrush),
-            MeasureState.Slack => (NeutralBrush, NeutralSoftBrush),
-            MeasureState.Stressed => (ErrorBrush, ErrorSoftBrush),
-            MeasureState.Unavailable => (WarningBrush, WarningSoftBrush),
-            _ => (NeutralBrush, NeutralSoftBrush),
-        };
-    }
 
-    private static readonly Avalonia.Media.IBrush SuccessBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#0F7B0F"));
-    private static readonly Avalonia.Media.IBrush SuccessSoftBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#EFF7EF"));
-    private static readonly Avalonia.Media.IBrush ErrorBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#C42B1C"));
-    private static readonly Avalonia.Media.IBrush ErrorSoftBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#FDF3F2"));
-    private static readonly Avalonia.Media.IBrush WarningBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#9D5D00"));
-    private static readonly Avalonia.Media.IBrush WarningSoftBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#FDF6EC"));
-    private static readonly Avalonia.Media.IBrush NeutralBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#5D5D5D"));
-    private static readonly Avalonia.Media.IBrush NeutralSoftBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F5F5F5"));
 
     private static string WordFor(MeasureState state) => state switch
     {
@@ -291,6 +309,13 @@ public partial class RodViewModel : ObservableObject
         MeasureState.Unavailable => "needs administrator",
         _ => state.ToString(),
     };
+
+    /// <summary>Re-applies the state visuals; also invoked on theme change.</summary>
+    public void ApplyStateVisuals(MeasureState state)
+    {
+        StateWord = WordFor(state);
+        (StateBrush, StateSoftBrush) = ThemePalette.ForState(state);
+    }
 
     /// <summary>
     /// The recorded original for this measure's first target, as read from
