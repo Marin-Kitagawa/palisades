@@ -318,7 +318,7 @@ Exactly the signatures above. `RegistryOptions.DefaultSavedStateKeyPath` is the 
 
 - [ ] **Step 4: Implement the in-memory hive**
 
-`InMemoryRegistry` holds a single `Dictionary<string, InMemoryEntry>` keyed by `"{rootToken}\\{subKey}"`, where `InMemoryEntry` is the mutable value bag for that path. `OpenKey` with `writable: true` creates the entry on demand. `TryGet*` return `false` for an absent name **and** for a kind mismatch, so a `REG_SZ` read through `TryGetDword` fails rather than coercing.
+`InMemoryRegistry` holds a single `Dictionary<string, InMemoryEntry>` keyed by `"{rootToken}\\{subKey}"`, where `InMemoryEntry` is the mutable value bag for that path. **`OpenKey` with `writable: true` creates the entry on demand. The path dictionary and every value-name dictionary use `StringComparer.OrdinalIgnoreCase`**, because real registry paths and value names are case-insensitive and several upstream Go files disagree on the casing of the same root (`SYSTEM\...` in `lsa_protection.go:28` versus lowercase elsewhere). A case-sensitive fake would fail tests for the wrong reason and encode a constraint the platform does not have. `TryGet*` return `false` for an absent name **and** for a kind mismatch, so a `REG_SZ` read through `TryGetDword` fails rather than coercing.
 
 - [ ] **Step 5: Run to verify it passes**
 
@@ -698,6 +698,8 @@ public void NotExisting_restore_deletes_a_value_created_after_hardening() // Rev
 Run: `dotnet test --filter "FullyQualifiedName~RegistryMechanismTests"`
 Expected: build failure — handlers do not exist.
 
+**The two LSA tests above use `SYSTEM\CurrentControlSet\Control\Lsa` / `RunAsPPL` / hardened value `1` / root `LocalMachine`, transcribed verbatim from `lsa_protection.go:26-30`.** `Cmd` and `Lsa` are the two measures every other mechanism test uses, because both are single-value `REG_DWORD` measures with no version expansion — keep them that way so a failure points at the mechanism, not at the fixture.
+
 - [ ] **Step 3: Implement `IMechanismHandler` and the three registry-value handlers**
 
 `RegistryDwordHandler.Mechanism` is `Mechanism.RegistryDword`. `Apply` on a `REG_DWORD` target: read the current value; if the key is absent or the value is absent, call `store.SaveNotExisting`; else call `store.SaveDword` with the current value; then `SetDword(descriptor's hardened value)`. The hardened value comes from the descriptor's mechanism-specific payload, so add to `MeasureDescriptor` a `IReadOnlyDictionary<string, string> Settings` carrying the hardened value, the multi-value name, and the Office/Adobe version and app lists. Name it explicitly in the descriptor; do not hide it in a side dictionary keyed by a string the plan has not fixed.
@@ -713,6 +715,50 @@ Expected: build failure — handlers do not exist.
 `DisallowRunHandler.ResolveTargets` returns one target with `ValueName` set to `"1"` (the `DisallowRun` enabling flag) and `MultiValueName` set to the executable name. `Apply` writes `1` to the flag after recording the flag's original state, then reads the current list, appends the executable if absent, and writes it back. `Restore` removes **only** that executable from the list and leaves every other entry, then restores the flag's original state. This is Review Focus #5 — the test asserting that another program's entry survives restore is in this task.
 
 `FileAssociationHandler` works against `HKCU\SOFTWARE\Classes` and restricts which ProgIDs may open each extension. The exact per-extension restriction table is the longest piece of hand-authored data in the project; put it in a single `FileAssociationTable` static class inside `FileAssociationHandler.cs` and keep it flat.
+
+Add these two tests, which are the verification for the two requirements above that were previously only prose:
+
+```csharp
+[Fact]
+public void DisallowRun_restore_removes_only_our_entry() // Review Focus #5
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("Cmd"));
+    var handler = new DisallowRunHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+
+    using (var key = registry.OpenKey(RegistryRoot.CurrentUser,
+        @"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\DisallowRun", true)!)
+    {
+        key.SetMultiString("", new[] { "cmd.exe", "wscript.exe" }); // wscript.exe is not ours.
+    }
+
+    handler.Apply(descriptor, targets, registry, store);
+    handler.Restore(descriptor, targets, registry, store);
+
+    using var check = registry.OpenKey(RegistryRoot.CurrentUser,
+        @"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\DisallowRun", false)!;
+    Assert.True(check.TryGetMultiString("", out var remaining));
+    Assert.Equal(new[] { "wscript.exe" }, remaining);
+}
+
+[Fact]
+public void FileAssociation_detects_hardened_after_apply() // spec defect #1
+{
+    var registry = new InMemoryRegistry();
+    var store = new SavedStateStore(registry, RegistryOptions.Default);
+    var descriptor = MeasureCatalog.Get(new MeasureId("FileAssociations"));
+    var handler = new FileAssociationHandler();
+    var targets = handler.ResolveTargets(descriptor, new StubVersionResolver());
+
+    Assert.Equal(MeasureState.Slack, handler.Detect(descriptor, targets, registry));
+    handler.Apply(descriptor, targets, registry, store);
+    Assert.Equal(MeasureState.Taut, handler.Detect(descriptor, targets, registry));
+    handler.Restore(descriptor, targets, registry, store);
+    Assert.Equal(MeasureState.Slack, handler.Detect(descriptor, targets, registry));
+}
+```
 
 - [ ] **Step 5: Add the tests for Review Focus #4 and #5, then run everything**
 
@@ -912,10 +958,11 @@ git commit -m "feat: ASR and Recall non-registry measures"
   - `public sealed class MeasureDetector(IReadOnlyDictionary<Mechanism, IMechanismHandler> handlers, IReadOnlyDictionary<MeasureId, INonRegistryMeasure> nonRegistry, Func<bool> isElevated)`
     - `IReadOnlyList<DetectionResult> DetectAll();`
     - `DetectionResult Detect(MeasureDescriptor descriptor);`
-  - `public sealed class RestorePlanner`
+  - `public static class RestorePlanner`
     - `public static IReadOnlyList<MeasureId> Order(IEnumerable<MeasureDescriptor> descriptors);`
-    - `public static IReadOnlyList<MeasureId> ConstrainedBy(MeasureDescriptor descriptor);`
   - Test helper, created in `tests/Palisade.Core.Tests/Engine/EngineFactory.cs` by this task and reused by Task 10 and Task 12: `internal static class EngineFactory { public static MeasureDetector BuildDetector(IRegistry? registry = null, bool isElevated = true); public static PalisadeEngine BuildEngine(IRegistry? registry = null, bool isElevated = true); }` — the single place the handler dictionary and non-registry dictionary are assembled for tests, so a later change to composition is made once.
+
+`RestorePlanner` is a **static** class with one member. It is not injected anywhere; `ApplyEngine` calls `RestorePlanner.Order(...)` directly. Consumers that need a single measure's constraints read `descriptor.ConstrainedBy` directly rather than through a planner method.
 
 - [ ] **Step 1: Write the failing detection tests**
 
@@ -1011,7 +1058,7 @@ git commit -m "feat: four-state detection and deterministic restore ordering"
   - `public enum ApplyOutcome { Applied, AlreadyApplied, Restored, NotRestored, Unavailable, Failed }`
   - `public sealed record MeasureResult(MeasureId Id, ApplyOutcome Outcome, string? Detail);`
   - `public sealed record ApplyReport(IReadOnlyList<MeasureResult> Results, IReadOnlyList<string> Warnings, bool RequiresRestart);`
-  - `public sealed class ApplyEngine(MeasureDetector detector, RestorePlanner planner, IReadOnlyDictionary<Mechanism, IMechanismHandler> handlers, IReadOnlyDictionary<MeasureId, INonRegistryMeasure> nonRegistry, SavedStateStore store, Func<bool> isElevated)`
+  - `public sealed class ApplyEngine(MeasureDetector detector, IReadOnlyDictionary<Mechanism, IMechanismHandler> handlers, IReadOnlyDictionary<MeasureId, INonRegistryMeasure> nonRegistry, SavedStateStore store)` — no `RestorePlanner` and no elevation predicate. Ordering comes from the static `RestorePlanner.Order`, and elevation was already resolved by the detector this engine holds. Two sources of truth for elevation is how a measure gets applied without ever having been checked.
     - `ApplyReport Apply(IReadOnlyCollection<MeasureId> ids);`
     - `ApplyReport RestoreAll();`
     - `ApplyReport ReapplyDefaults();` — restore every non-default measure to its original, then apply the default set. This is the Go tool's "Harden again (all default settings)" and it is the operation that must leave a machine in a fully-determined state after a version upgrade.
