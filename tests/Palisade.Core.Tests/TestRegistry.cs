@@ -27,7 +27,15 @@ namespace Palisade.Core.Tests;
 /// </summary>
 public sealed class InMemoryRegistry : IRegistry, IRegistryKeyFactory
 {
-    private readonly Dictionary<string, InMemoryEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// The comparer every path in this hive uses. The subtree scan in
+    /// <see cref="DeleteKey"/> has to agree with it: a descendant stored as
+    /// <c>software\microsoft\...</c> is beneath a parent asked for as
+    /// <c>SOFTWARE\MICROSOFT\...</c>, and an ordinal prefix test would leave it behind.
+    /// </summary>
+    private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
+
+    private readonly Dictionary<string, InMemoryEntry> _entries = new(PathComparer);
 
     /// <summary>
     /// <c>writable</c> governs only whether an absent path is created on the spot. It is not
@@ -51,6 +59,42 @@ public sealed class InMemoryRegistry : IRegistry, IRegistryKeyFactory
 
         return new InMemoryRegistryKey(entry);
     }
+
+    /// <summary>
+    /// Removes the key and its whole subtree, the way <c>RegDeleteKey</c> does, and returns
+    /// whether anything was removed. A key is a path string, so a descendant is one that
+    /// extends the parent's path with a <c>\</c>-prefixed segment; the caller may already have
+    /// supplied that separator, because the saved-state path ends in one
+    /// (<c>constants.go:20</c>), and appending another would look for a doubled backslash
+    /// and match no descendant at all.
+    /// </summary>
+    public bool DeleteKey(RegistryRoot root, string subKey)
+    {
+        var path = KeyPath(root, subKey);
+        var prefix = path.EndsWith('\\') ? path : path + "\\";
+
+        // Materialised before removing: the keys cannot be enumerated while being mutated.
+        var doomed = _entries.Keys
+            .Where(candidate => PathComparer.Equals(candidate, path) || IsBeneath(candidate, prefix))
+            .ToList();
+
+        foreach (var candidate in doomed)
+        {
+            _entries.Remove(candidate);
+        }
+
+        // A descendant can exist with no entry for its parent, because nothing enforces one.
+        // Removing it is still a removal, so this reports what happened rather than whether
+        // the exact path was present.
+        return doomed.Count > 0;
+    }
+
+    /// <summary>
+    /// A prefix test in the same comparison the path dictionary uses, so the subtree scan
+    /// cannot silently disagree with it.
+    /// </summary>
+    private static bool IsBeneath(string path, string prefix) =>
+        path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Registry paths and value names are case-insensitive, and the Go sources disagree on

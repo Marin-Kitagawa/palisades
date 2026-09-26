@@ -21,6 +21,10 @@ namespace Palisade.Core.Registry;
 /// <summary>
 /// The value kinds this layer can carry. <see cref="Binary"/> is recognised but never
 /// produced by a measure, and <see cref="None"/> means the value name is absent.
+/// <see cref="MultiString"/> is a real <c>REG_MULTI_SZ</c> kind that the abstraction models
+/// for completeness: no measure carries it and no call site in the Go tree writes one, so its
+/// presence here is not licence to read a list out of a key. DisallowRun in particular is
+/// numbered <c>REG_SZ</c> values in a subkey (<c>cmd.go:170-177</c>), not one multi-string.
 /// </summary>
 public enum RegistryValueKind
 {
@@ -61,17 +65,33 @@ public interface IRegistryKey : IDisposable
 /// <summary>
 /// The injected registry abstraction. <see cref="OpenKey"/> returns <c>null</c> for an
 /// absent key — that is normal state, not an error, and every caller must handle it.
+/// <see cref="DeleteKey"/> returns <c>false</c> when the key was already absent, so
+/// "already gone" stays distinguishable from "deleted".
 /// </summary>
+/// <remarks>
+/// <c>OpenKey(..., writable: true)</c> creates the key on demand, which conflates Go's
+/// <c>CreateKey</c> (harden) with its <c>OpenKey</c> (restore, which fails when absent).
+/// The caller owns that distinction: a restore probes read-only and stops without writing
+/// when it gets <c>null</c>. <see cref="DeleteKey"/> removes a whole subtree, as
+/// <c>RegDeleteKey</c> does, because the DisallowRun subkey is deleted once its last entry
+/// is gone (<c>cmd.go:136</c>, <c>powershell.go:140</c>) and restore removes the saved-state
+/// key outright (<c>utils.go:159</c>).
+/// </remarks>
 public interface IRegistry
 {
     IRegistryKey? OpenKey(RegistryRoot root, string subKey, bool writable);
+
+    bool DeleteKey(RegistryRoot root, string subKey);
 }
 
 /// <summary>
 /// The single dependency a mechanism takes, so <c>RegistryAccess</c> and the in-memory
-/// hive are interchangeable behind one constructor parameter.
+/// hive are interchangeable behind one constructor parameter. Same null-on-absent and
+/// subtree-delete contract as <see cref="IRegistry"/>.
 /// </summary>
 public interface IRegistryKeyFactory
 {
     IRegistryKey? OpenKey(RegistryRoot root, string subKey, bool writable);
+
+    bool DeleteKey(RegistryRoot root, string subKey);
 }

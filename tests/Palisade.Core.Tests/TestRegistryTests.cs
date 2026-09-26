@@ -85,22 +85,26 @@ public class TestRegistryTests
     [Fact]
     public void MultiString_round_trips()
     {
+        // The fake models REG_MULTI_SZ because the abstraction declares the kind, not because
+        // any measure uses it: no Go call site writes a multi-string, and DisallowRun in
+        // particular is numbered REG_SZ values in a subkey, not one list.
         var registry = new InMemoryRegistry();
         using var key = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
-        key.SetMultiString("DisallowRun", new[] { "cmd.exe", "wscript.exe" });
-        Assert.True(key.TryGetMultiString("DisallowRun", out var value));
-        Assert.Equal(new[] { "cmd.exe", "wscript.exe" }, value);
+        key.SetMultiString("List", new[] { "one", "two" });
+        Assert.True(key.TryGetMultiString("List", out var value));
+        Assert.Equal(new[] { "one", "two" }, value);
     }
 
     [Fact]
     public void The_default_value_uses_the_empty_name()
     {
-        // The DisallowRun list is the key's default value upstream, which is the empty name.
+        // A Windows key can carry a default value, whose name is the empty string, so the
+        // empty name has to round-trip rather than read as an absent value.
         var registry = new InMemoryRegistry();
         using var key = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
-        key.SetMultiString(string.Empty, new[] { "cmd.exe" });
-        Assert.True(key.TryGetMultiString(string.Empty, out var value));
-        Assert.Equal(new[] { "cmd.exe" }, value);
+        key.SetString(string.Empty, "default");
+        Assert.True(key.TryGetString(string.Empty, out var value));
+        Assert.Equal("default", value);
         Assert.Equal(new[] { string.Empty }, key.GetValueNames());
     }
 
@@ -308,6 +312,139 @@ public class TestRegistryTests
         using var key = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
         key.DeleteValue("NeverThere");
         Assert.Empty(key.GetValueNames());
+    }
+
+    [Fact]
+    public void DeleteKey_removes_the_key_and_everything_beneath_it()
+    {
+        // Real RegDeleteKey removes a subtree, and both upstream call sites depend on it:
+        // the DisallowRun subkey once its last entry is gone (cmd.go:136), and the whole
+        // saved-state key on restore (utils.go:159).
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A\B", "W");
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A\B\C", "X");
+
+        Assert.True(registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\A"));
+
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: false));
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A\B", writable: false));
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A\B\C", writable: false));
+    }
+
+    [Fact]
+    public void DeleteKey_leaves_keys_that_only_share_a_prefix()
+    {
+        // Software\A must not take Software\AB or Software\A2 with it, so the subtree test
+        // has to match a separator and not merely the leading characters.
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\AB", "W");
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A2\B", "X");
+
+        Assert.True(registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\A"));
+
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: false));
+        Assert.NotNull(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\AB", writable: false));
+        Assert.NotNull(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A2\B", writable: false));
+    }
+
+    [Fact]
+    public void DeleteKey_matches_descendant_paths_case_insensitively()
+    {
+        // The path dictionary is OrdinalIgnoreCase, so a child stored as
+        // `software\microsoft\...` is beneath a parent asked for as `SOFTWARE\MICROSOFT\...`.
+        // An ordinal prefix test would miss it and leave the subtree behind.
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"SOFTWARE\MICROSOFT\Windows", "V");
+        Seed(registry, RegistryRoot.CurrentUser, @"software\microsoft\windows\currentversion\explorer", "W");
+        // Outside the subtree, and stored in a third casing, so a scan that over-matched
+        // would take this one too.
+        Seed(registry, RegistryRoot.CurrentUser, @"software\other\policies", "X");
+
+        Assert.True(registry.DeleteKey(RegistryRoot.CurrentUser, @"SOFTWARE\MICROSOFT\WINDOWS"));
+
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"SOFTWARE\MICROSOFT\Windows", writable: false));
+        Assert.Null(registry.OpenKey(
+            RegistryRoot.CurrentUser, @"software\microsoft\windows\currentversion\explorer", writable: false));
+        Assert.NotNull(registry.OpenKey(RegistryRoot.CurrentUser, @"software\other\policies", writable: false));
+    }
+
+    [Fact]
+    public void DeleteKey_returns_false_when_the_key_was_already_absent()
+    {
+        // "Already absent" has to stay distinguishable from "deleted", the same discipline as
+        // OpenKey returning null rather than throwing.
+        var registry = new InMemoryRegistry();
+        Assert.False(registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\Nope"));
+
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
+        Assert.True(registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\A"));
+        Assert.False(registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\A"));
+    }
+
+    [Fact]
+    public void DeleteKey_returns_true_when_only_a_descendant_existed()
+    {
+        // A key is a path string with no enforced parent, so a child can exist with no entry
+        // for its parent. Removing it is still a removal, and reporting false would tell the
+        // caller nothing was deleted when something was.
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A\B", "V");
+
+        Assert.True(registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\A"));
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A\B", writable: false));
+    }
+
+    [Fact]
+    public void DeleteKey_leaves_the_same_path_under_another_root_alone()
+    {
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
+        Seed(registry, RegistryRoot.LocalMachine, @"Software\A", "W");
+
+        Assert.True(registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\A"));
+
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: false));
+        using var machine = registry.OpenKey(RegistryRoot.LocalMachine, @"Software\A", writable: false)!;
+        Assert.True(machine.TryGetString("W", out var value));
+        Assert.Equal("W", value);
+    }
+
+    [Fact]
+    public void DeleteKey_handles_the_saved_state_paths_trailing_backslash()
+    {
+        // utils.go:159 deletes hardentoolsKeyPath, which ends in a backslash
+        // (constants.go:20). Appending a separator unconditionally would look for a doubled
+        // backslash and match no descendant.
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, "V");
+        Seed(registry, RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath + "Sub", "W");
+
+        Assert.True(registry.DeleteKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath));
+
+        Assert.Null(registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, writable: false));
+        Assert.Null(registry.OpenKey(
+            RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath + "Sub", writable: false));
+    }
+
+    [Fact]
+    public void A_deleted_subtree_can_be_created_again_and_starts_empty()
+    {
+        var registry = new InMemoryRegistry();
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A", "V");
+        Seed(registry, RegistryRoot.CurrentUser, @"Software\A\B", "W");
+        registry.DeleteKey(RegistryRoot.CurrentUser, @"Software\A");
+
+        using var recreated = registry.OpenKey(RegistryRoot.CurrentUser, @"Software\A", writable: true)!;
+        Assert.Empty(recreated.GetValueNames());
+        Assert.False(recreated.TryGetString("V", out _));
+    }
+
+    private static void Seed(InMemoryRegistry registry, RegistryRoot root, string path, string valueName)
+    {
+        using var key = registry.OpenKey(root, path, writable: true)!;
+        key.SetString(valueName, valueName);
     }
 
     [Fact]
