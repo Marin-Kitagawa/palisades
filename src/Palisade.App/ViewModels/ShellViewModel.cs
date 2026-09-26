@@ -53,16 +53,22 @@ public partial class ShellViewModel : ObservableObject
         var harden = new HardenViewModel();
         Navigation =
         [
-            new NavItemViewModel("Palisade", "the 26 hardening measures", "\uE80F", () => new HardenView { DataContext = harden }),
-            new NavItemViewModel("Optimize", "tuning toggles from RyTuneX", "\uEC4A", () => new OptimizeView { DataContext = new OptimizeViewModel() }),
-            new NavItemViewModel("Policies", "group policy scanner", "\uE8B7", () => new PoliciesView { DataContext = new PoliciesViewModel() }),
-            new NavItemViewModel("Startup", "startup entries", "\uE7E8", () => new StartupView { DataContext = new StartupViewModel() }),
-            new NavItemViewModel("Debloat", "apps and temp files", "\uE74D", () => new DebloatView { DataContext = new DebloatViewModel() }),
-            new NavItemViewModel("Repair", "DISM, SFC and CHKDSK", "\uE90F", () => new RepairView { DataContext = new RepairViewModel() }),
-            new NavItemViewModel("About", "license and provenance", "\uE946", () => new AboutView { DataContext = new AboutViewModel() }),
+            new NavItemViewModel("Palisade", "the 26 hardening measures", "\uE80F", "harden", () => new HardenView { DataContext = harden }),
+            new NavItemViewModel("Optimize", "tuning toggles from RyTuneX", "\uEC4A", "optimize", () => new OptimizeView { DataContext = new OptimizeViewModel() }),
+            new NavItemViewModel("Policies", "group policy scanner", "\uE8B7", "policies", () => new PoliciesView { DataContext = new PoliciesViewModel() }),
+            new NavItemViewModel("Startup", "startup entries", "\uE7E8", "startup", () => new StartupView { DataContext = new StartupViewModel() }),
+            new NavItemViewModel("Debloat", "apps and temp files", "\uE74D", "debloat", () => new DebloatView { DataContext = new DebloatViewModel() }),
+            new NavItemViewModel("Repair", "DISM, SFC and CHKDSK", "\uE90F", "repair", () => new RepairView { DataContext = new RepairViewModel() }),
+            new NavItemViewModel("About", "license and provenance", "\uE946", "about", () => new AboutView { DataContext = new AboutViewModel() }),
         ];
-        SelectedNav = Navigation[0];
-        CurrentPage = Navigation[0].CreateView();
+        // Deep-link: Palisade.exe --page optimize
+        var argv = Environment.GetCommandLineArgs();
+        var pageIdx = Array.IndexOf(argv, "--page");
+        var requested = pageIdx >= 0 && pageIdx + 1 < argv.Length ? argv[pageIdx + 1] : null;
+        SelectedNav = requested is null
+            ? Navigation[0]
+            : Navigation.FirstOrDefault(n => n.Tag == requested) ?? Navigation[0];
+        CurrentPage = SelectedNav.CreateView();
     }
 
     partial void OnSelectedNavChanged(NavItemViewModel? value)
@@ -124,13 +130,17 @@ public partial class NavItemViewModel : ObservableObject
 
     private readonly Func<Control> _createView;
 
-    public NavItemViewModel(string title, string subtitle, string icon, Func<Control> createView)
+    public NavItemViewModel(string title, string subtitle, string icon, string tag, Func<Control> createView)
     {
         Title = title;
         Subtitle = subtitle;
         Icon = icon;
+        Tag = tag;
         _createView = createView;
     }
+
+    /// <summary>Stable id for deep-linking via --page.</summary>
+    public string Tag { get; }
 
     public Control CreateView() => _createView();
 }

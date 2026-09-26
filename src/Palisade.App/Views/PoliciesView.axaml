@@ -54,7 +54,7 @@
                 <Button Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0"
                         Content="Reset" MinWidth="90"
                         IsVisible="{Binding IsConfigured}"
-                        Command="{Binding $parent[ItemsControl].((vm:PoliciesViewModel)DataContext).ResetCommand}"
+                        Command="{Binding $parent[UserControl].((vm:PoliciesViewModel)DataContext).ResetCommand}"
                         CommandParameter="{Binding}" />
               </Grid>
             </Border>

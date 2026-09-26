@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   Palisade Startup â€” startup entry manager (RyTuneX port). Fluent page.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
@@ -40,12 +40,12 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
                   <Button Classes="subtle" Content="Remove" MinWidth="0" Padding="8,4"
-                          Command="{Binding $parent[ItemsControl].((vm:StartupViewModel)DataContext).RemoveCommand}"
+                          Command="{Binding $parent[UserControl].((vm:StartupViewModel)DataContext).RemoveCommand}"
                           CommandParameter="{Binding}" />
                 </StackPanel>
                 <ToggleSwitch Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0"
                               IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                              Command="{Binding $parent[ItemsControl].((vm:StartupViewModel)DataContext).ToggleCommand}"
+                              Command="{Binding $parent[UserControl].((vm:StartupViewModel)DataContext).ToggleCommand}"
                               CommandParameter="{Binding}" />
               </Grid>
             </Border>

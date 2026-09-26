@@ -61,6 +61,7 @@ public partial class OptimizeViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RevertAllCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ToggleCommand))]
     private bool _isBusy;
 
     [ObservableProperty]

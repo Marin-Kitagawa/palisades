@@ -51,7 +51,7 @@
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0"
                                           IsChecked="{Binding IsApplied, Mode=TwoWay}"
-                                          Command="{Binding $parent[ItemsControl].((vm:OptimizeViewModel)DataContext).ToggleCommand}"
+                                          Command="{Binding $parent[UserControl].((vm:OptimizeViewModel)DataContext).ToggleCommand}"
                                           CommandParameter="{Binding}" />
                           </Grid>
                         </Border>

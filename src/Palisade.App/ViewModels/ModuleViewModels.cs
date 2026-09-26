@@ -49,6 +49,7 @@ public partial class PoliciesViewModel : ObservableObject
     public IAsyncRelayCommand ResetAllCommand { get; }
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ResetCommand))]
     [NotifyCanExecuteChangedFor(nameof(ResetAllCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     private bool _isBusy;
@@ -191,6 +192,9 @@ public partial class StartupViewModel : ObservableObject
     public IAsyncRelayCommand RemoveCommand { get; }
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ToggleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -315,6 +319,9 @@ public partial class DebloatViewModel : ObservableObject
     public IAsyncRelayCommand CleanTempCommand { get; }
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UninstallCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CleanTempCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
