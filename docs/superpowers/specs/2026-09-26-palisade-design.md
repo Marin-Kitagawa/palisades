@@ -179,7 +179,7 @@ Verified against `global_vars.go` in the upstream source. `Default` is `hardenBy
 | Command prompt (`cmd.exe`) | `DisallowRun` | **no** | Windows |
 | UAC prompt behaviour | `RegistryDword` | yes | Windows |
 | File associations | `FileAssociation` | yes | Windows |
-| Windows ASR rules | `RegistryString` | yes | Windows |
+| Windows ASR rules | `NonRegistry` | yes | Windows |
 | LSA protection | `RegistryDword` | **no** | System |
 | Defender PUA blocking | `RegistryDword` | yes | System |
 | LibreOffice macro security | `RegistryDword` | **no** | LibreOffice |
@@ -217,7 +217,7 @@ Verified against `registry_utils.go`. The separator is **four underscores** in t
 | `SavedStateNew_` | `<ROOT>____<KEYPATH>____<VALUENAME>` | Original `REG_DWORD` |
 | `SavedStateNewSZ_` | `<ROOT>____<KEYPATH>____<VALUENAME>` | Original `REG_SZ` |
 | `SavedStateNotExisting_` | `<ROOT>____<KEYPATH>____<VALUENAME>` | Value did not exist; restore must delete it |
-| `SavedStateNonReg_` | `<feature>` | Non-registry state, e.g. Recall feature state |
+| `SavedStateNonReg_` | `<feature>` | Non-registry state, e.g. Recall feature state. The Go tool persists this under the lowercase name `recall` (`recall_feature.go:50`), so the `MeasureId` is `recall`; the Windows optional feature name `Recall` passed to the PowerShell cmdlet is a separate value and is not the id. |
 | `SavedState_` | `<ROOT>_<KEYPATH>_<VALUENAME>` | **Legacy**, single underscore. Read and restored, never written |
 
 Root key names: `CLASSES_ROOT`, `CURRENT_USER`, `LOCAL_MACHINE`, `USERS`, `CURRENT_CONFIG`, `PERFORMANCE_DATA`.

@@ -21,6 +21,9 @@
 - The saved-state key path is exactly `SOFTWARE\Security Without Borders\`.
 - Measure count is exactly 26: 12 available without elevation, 14 requiring it.
 - Exactly 8 measures are `HardenByDefault == false`: `Cmd`, `Lsa`, `LibreOfficeMacroSecurity`, `LibreOfficeCtrlClickHyperlinks`, `LibreOfficeUntrustedRefererLinks`, `LibreOfficeEnforceUpdateChecks`, `LibreOfficeDisableUpdateLinks`, `Recall`.
+- **A descriptor's registry payload lives in its typed `Targets` list, not in `Settings`.** `Settings` is reserved for the non-registry-family parameters (path templates, version lists, app lists). One `Settings["HardenedValue"]` per descriptor cannot express the 10 measures that write more than one registry value, and the `26/12/14/8` count tests cannot see the difference — see the Task 2 escalation note below.
+- **`Recall`'s `MeasureId.Value` is the lowercase string `recall`**, not `Recall`. `recall_feature.go:50` sets `featureName = "recall"`, so the Go tool persists `SavedStateNonReg_recall` and a capital-R id would silently fail to find it. The Windows optional feature name is separately `Recall` (the PowerShell cmdlet argument, `recall_feature.go:67`); the id and the feature name are different things and must not be conflated.
+- **Windows ASR rules are `NonRegistry` with id `WindowsAsrRules`.** ASR has no `saveHardenState` call site (`windows_asr.go:102` is a TODO), so its id is unconstrained upstream. Spec §6.2 line 182 says `RegistryString`, contradicting spec §6.1 line 136 and the Go source; line 182 is the error.
 - No test in this project may open a real registry key. The in-memory hive is the only hive tests touch; this is enforced by the `IRegistry` abstraction, not by convention.
 - C# style follows the user's existing projects: file-scoped namespaces, primary constructors where they read better, `var` for obvious locals, no XML doc comments on private members.
 
@@ -45,7 +48,7 @@ Five input classes the spec implies but no task's happy-path tests exercise. Eac
 | `src/Palisade.Core/Models/MeasureGroup.cs` | Six measure groups |
 | `src/Palisade.Core/Models/Mechanism.cs` | The six mechanisms |
 | `src/Palisade.Core/Models/RegistryRoot.cs` | Six root tokens + name↔token mapping |
-| `src/Palisade.Core/Models/MeasureDescriptor.cs` | The descriptor record, `AvailabilityRule`, `MeasureConstraint` |
+| `src/Palisade.Core/Models/MeasureDescriptor.cs` | The descriptor record, `MeasureTarget`, `AvailabilityRule`, `MeasureConstraint` |
 | `src/Palisade.Core/Models/MeasureCatalog.cs` | The 26 descriptors as data + lookup by id/group |
 | `src/Palisade.Core/Registry/IRegistry.cs` | `IRegistry`, `IRegistryKey` — the abstraction every mechanism codes against |
 | `src/Palisade.Core/Registry/RegistryKeyNames.cs` | Parse/format the four current prefixes and the legacy prefix |
@@ -148,13 +151,18 @@ git commit -m "chore: scaffold Palisade.Core and test project"
   - `public static class RootKeyNames { public static string ToToken(RegistryRoot root); public static bool TryParse(string token, out RegistryRoot root); }` — `ToToken` returns the six exact tokens in Global Constraints; `TryParse` returns `false` for any other string.
   - `public sealed record AvailabilityRule(string Kind, IReadOnlyDictionary<string, string> Arguments, string Reason);`
   - `public sealed record MeasureConstraint(MeasureId Target, string Reason);`
-  - `public sealed record MeasureDescriptor(MeasureId Id, string Name, string LongName, string Consequence, Mechanism Mechanism, bool RequiresElevation, bool HardenByDefault, MeasureGroup Group, IReadOnlyDictionary<string, string> Settings, IReadOnlyList<MeasureConstraint> ConstrainedBy, IReadOnlyList<AvailabilityRule> Availability);`
+  - `public sealed record MeasureTarget(RegistryRoot Root, string Path, string ValueName, string Kind, string HardenedValue);` — one registry value a measure writes. `Kind` is exactly one of `"Dword"`, `"String"`, `"MultiString"`, and drives the actual read/write, so a measure that writes both an `REG_SZ` and an `REG_DWORD` needs no bespoke encoding. `HardenedValue` is the string form of the hardened value; for `"Dword"` it is the decimal digits.
+  - `public sealed record MeasureDescriptor(MeasureId Id, string Name, string LongName, string Consequence, Mechanism Mechanism, bool RequiresElevation, bool HardenByDefault, MeasureGroup Group, IReadOnlyDictionary<string, string> Settings, IReadOnlyList<MeasureTarget> Targets, IReadOnlyList<MeasureConstraint> ConstrainedBy, IReadOnlyList<AvailabilityRule> Availability);`
 
-  **`Settings` is the mechanism payload** and is what makes a descriptor self-contained data rather than a type per measure. Reserved keys, all string-typed: `"HardenedValue"` (the `REG_DWORD` value, or the `REG_SZ` string), `"MultiValueName"` (the `REG_MULTI_SZ` value to manage instead of `HardenedValue`), `"PathTemplate"` (the versioned-path template), `"ValueName"`, `"OfficeVersions"`, `"AdobeVersions"`, `"Apps"` (comma-separated; a `MultiRegistryDword` sets `"MultiValueName"` to the executable name and omits the rest).`
-  - `public readonly record struct MeasureId(string Value);` with `public override string ToString() => Value;` and `public static implicit operator string(MeasureId id) => id.Value;` — the implicit operator exists so the saved-state feature names read cleanly, e.g. `saveHardenState(MeasureId.From("Recall"), "disabled")`.
+  **`Targets` is the registry payload** and is what makes a descriptor self-contained data rather than a type per measure. It is non-empty for `RegistryDword`, `RegistryString` and `VersionedPath` measures, and empty for `DisallowRun`, `FileAssociation` and `NonRegistry`. `Mechanism` stays the descriptor's classification (used for restore ordering, UI grouping, and the validation test below); `Target.Kind` is what a handler actually dispatches on, which is why a `RegistryString` measure may legitimately carry one `"Dword"` target — LibreOffice writes `REG_SZ "Value"` and `REG_DWORD "Final"` at the same policy path (`libreoffice.go:39` and `libreoffice.go:57`).
+
+  **`Settings` holds only the non-registry-family parameters.** Reserved keys, all string-typed: `"PathTemplate"` (the versioned-path template), `"OfficeVersions"`, `"AdobeVersions"`, `"Apps"` (comma-separated; a multi-value measure sets a target whose `ValueName` is the executable name and omits the rest). The previously listed `"HardenedValue"`, `"MultiValueName"` and bare `"ValueName"` keys are **removed** — that payload now lives in `Targets`, and keeping both spellings of the same fact is how the two drift apart.
+  - `public readonly record struct MeasureId(string Value);` with `public override string ToString() => Value;` and `public static implicit operator string(MeasureId id) => id.Value;` — the implicit operator exists so the saved-state feature names read cleanly, e.g. `saveHardenState(MeasureId.From("recall"), "disabled")`.
   - `public static class MeasureCatalog { public static IReadOnlyList<MeasureDescriptor> All { get; } public static MeasureDescriptor Get(MeasureId id); public static IReadOnlyList<MeasureDescriptor> InGroup(MeasureGroup group); }`
 
-**Note on `MeasureId`:** it wraps a string rather than an enum so that `SavedStateNonReg_` feature names stay byte-identical to the Go tool's. The `Value` strings for non-registry measures are exactly `Recall` and whatever Task 10 fixes for ASR, matched to `saveHardenState` call sites in the Go source.
+**Note on `MeasureId`:** it wraps a string rather than an enum so that `SavedStateNonReg_` feature names stay byte-identical to the Go tool's. The `Value` strings for non-registry measures are exactly `recall` (lowercase, matching `recall_feature.go:50`) and `WindowsAsrRules`.
+
+**Why `Targets` exists (Task 2 escalation, resolved):** the first Task 2 implementer stopped with `NEEDS_CONTEXT` rather than guess. Verified against the Go source: `show_file_extensions.go:28-43`, `autorun.go:34-49`, `uac.go:28-47` and `defender_pua.go:45-65` each write three distinct registry values, and `office.go`'s DDE measure writes five sub-values across four path templates. A single `Settings["HardenedValue"]` has no room for the second and third, and the `26/12/14/8` count tests pass with that payload silently absent — which would have shipped into Tasks 6–9 as a port that hardens one of three values and reports success. Option A (an encoded sub-value list inside a string key) was rejected because it must survive `\` and `%s` inside path templates and an empty-string hardened value; Option C (composite tables kept in handlers) was rejected because the plan already does that for the file-association table and extending it makes the catalog stop being self-contained.
 
 - [ ] **Step 1: Write the failing catalog tests**
 
@@ -189,11 +197,83 @@ public class MeasureCatalogTests
     [InlineData("LibreOfficeUntrustedRefererLinks")]
     [InlineData("LibreOfficeEnforceUpdateChecks")]
     [InlineData("LibreOfficeDisableUpdateLinks")]
-    [InlineData("Recall")]
+    [InlineData("recall")]
     public void Catalog_marks_the_eight_opt_in_measures_as_not_default(string id)
     {
         var descriptor = MeasureCatalog.Get(new MeasureId(id));
         Assert.False(descriptor.HardenByDefault);
+    }
+
+    [Fact]
+    public void Every_registry_family_measure_has_at_least_one_target() =>
+        Assert.All(
+            MeasureCatalog.All.Where(m => m.Mechanism is Mechanism.RegistryDword
+                or Mechanism.RegistryString
+                or Mechanism.VersionedPath),
+            m => Assert.NotEmpty(m.Targets));
+
+    [Fact]
+    public void Every_non_registry_family_measure_has_no_targets() =>
+        Assert.All(
+            MeasureCatalog.All.Where(m => m.Mechanism is Mechanism.DisallowRun
+                or Mechanism.FileAssociation
+                or Mechanism.NonRegistry),
+            m => Assert.Empty(m.Targets));
+
+    [Theory]
+    [InlineData("Dword")]
+    [InlineData("String")]
+    [InlineData("MultiString")]
+    public void Every_target_kind_is_a_known_kind(string kind) =>
+        Assert.All(MeasureCatalog.All.SelectMany(m => m.Targets), t => Assert.Equal(kind, t.Kind));
+
+    [Fact]
+    public void Every_target_has_a_root_a_path_a_value_name_and_a_hardened_value()
+    {
+        Assert.All(MeasureCatalog.All.SelectMany(m => m.Targets), t =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(t.Path));
+            Assert.False(string.IsNullOrWhiteSpace(t.ValueName));
+            Assert.False(string.IsNullOrWhiteSpace(t.HardenedValue));
+        });
+    }
+
+    [Fact]
+    public void The_four_multi_value_measures_each_keep_all_three_registry_values()
+    {
+        // Show file extensions, Autorun, UAC and PUA are `RegistryMultiValue` in Go
+        // (show_file_extensions.go, autorun.go, uac.go, defender_pua.go) and each write three
+        // distinct values. Asserted by count and group rather than by id, so this test does
+        // not depend on the catalog's id spelling staying fixed.
+        var three = MeasureCatalog.All.Where(m => m.Targets.Count == 3).ToList();
+        Assert.Equal(4, three.Count);
+        Assert.All(three, m => Assert.True(
+            m.Group is MeasureGroup.Windows or MeasureGroup.System,
+            $"expected a Windows or System measure, got {m.Group}"));
+    }
+
+    [Fact]
+    public void All_five_LibreOffice_measures_pair_a_string_value_with_a_final_dword()
+    {
+        // libreoffice.go:39 writes REG_SZ "Value" and libreoffice.go:57 writes REG_DWORD
+        // "Final" at the same policy path, so no single `Mechanism` value describes them —
+        // this is the case that forced the typed `Targets` list.
+        var libre = MeasureCatalog.All.Where(m => m.Group == MeasureGroup.LibreOffice).ToList();
+        Assert.Equal(5, libre.Count);
+        Assert.All(libre, m =>
+        {
+            Assert.Contains(m.Targets, t => t.ValueName == "Value" && t.Kind == "String");
+            Assert.Contains(m.Targets, t => t.ValueName == "Final" && t.Kind == "Dword");
+        });
+    }
+
+    [Fact]
+    public void LibreOffice_measures_are_not_all_classified_as_a_single_value_kind()
+    {
+        // Guards the inverse mistake: if someone "fixes" the mixed kinds by collapsing
+        // LibreOffice to one mechanism and dropping a target, this fails.
+        var libre = MeasureCatalog.All.Where(m => m.Group == MeasureGroup.LibreOffice).ToList();
+        Assert.All(libre, m => Assert.Equal(2, m.Targets.Count));
     }
 
     [Fact]
@@ -220,9 +300,11 @@ Expected: build failure — `MeasureCatalog` does not exist.
 
 - [ ] **Step 3: Implement the enums, records, and `RootKeyNames`**
 
-One file per type, matching the File Structure table. `ToToken`/`TryParse` cover exactly the six tokens; `TryParse` is `false` for everything else, including the empty string.
+One file per type, matching the File Structure table. `ToToken`/`TryParse` cover exactly the six tokens; `TryParse` is `false` for everything else, including the empty string. `MeasureTarget` lives in `MeasureDescriptor.cs` alongside the descriptor that owns it.
 
 - [ ] **Step 4: Implement the 26 descriptors in `MeasureCatalog.cs`**
+
+Each descriptor is one static `readonly` field. Populate `Targets` from the Go source — **this is the step the plan originally got wrong, so read the Go file for every measure rather than assuming one value.** The four `RegistryMultiValue` measures (`show_file_extensions.go`, `autorun.go`, `uac.go`, `defender_pua.go`) get three targets each; the five LibreOffice measures get two each, an `REG_SZ "Value"` and an `REG_DWORD "Final"` (`libreoffice.go:39` and `libreoffice.go:57`); `office.go`'s DDE measure gets a target per sub-value. `Kind` is `"Dword"`, `"String"` or `"MultiString"` and drives the write, so LibreOffice needs no bespoke encoding. `Settings` carries only `"PathTemplate"`, `"OfficeVersions"`, `"AdobeVersions"` and `"Apps"`. `DisallowRun`, `FileAssociation` and `NonRegistry` measures have an empty `Targets` list.
 
 Each descriptor is one static `readonly` field. The `Consequence` string is the display-size sentence naming what breaks in the user's own applications — for example `Cmd`'s is "You will not be able to open the Windows command prompt (cmd.exe) any more.", and `OfficeMacros`' is "Macros will not run in Excel, PowerPoint, or Word. Documents that rely on macros will not work."
 
@@ -592,13 +674,13 @@ git commit -m "feat: saved-state store with Go-format compatibility"
 **Interfaces:**
 - Consumes: `IRegistryKeyFactory`, `SavedStateStore`, `RegistryRoot`, `MeasureId` (Tasks 2–5).
 - Produces:
-  - `public sealed record MechanismTarget(RegistryRoot Root, string KeyPath, string ValueName, string? MultiValueName);`
+  - `public sealed record ResolvedTarget(RegistryRoot Root, string KeyPath, string ValueName, string? MultiValueName, string Kind, string HardenedValue);` — a *resolved* target: one concrete registry value, after any version expansion. Distinct from Task 2's `MeasureTarget`, which is a *declared* target in the catalog. `ResolveTargets` starts from `descriptor.Targets` and, for versioned measures, fans one declared target out into one `ResolvedTarget` per discovered version; for non-versioned measures it maps each `MeasureTarget` straight through, carrying `Kind` and `HardenedValue` across unchanged.
   - `public interface IMechanismHandler`
     - `Mechanism Mechanism { get; }`
-    - `IReadOnlyList<MechanismTarget> ResolveTargets(MeasureDescriptor descriptor, IVersionResolver versions);`
-    - `MeasureState Detect(MeasureDescriptor descriptor, IReadOnlyList<MechanismTarget> targets, IRegistryKeyFactory registry);`
-    - `void Apply(MeasureDescriptor descriptor, IReadOnlyList<MechanismTarget> targets, IRegistryKeyFactory registry, SavedStateStore store);`
-    - `void Restore(MeasureDescriptor descriptor, IReadOnlyList<MechanismTarget> targets, IRegistryKeyFactory registry, SavedStateStore store);`
+    - `IReadOnlyList<ResolvedTarget> ResolveTargets(MeasureDescriptor descriptor, IVersionResolver versions);`
+    - `MeasureState Detect(MeasureDescriptor descriptor, IReadOnlyList<ResolvedTarget> targets, IRegistryKeyFactory registry);`
+    - `void Apply(MeasureDescriptor descriptor, IReadOnlyList<ResolvedTarget> targets, IRegistryKeyFactory registry, SavedStateStore store);`
+    - `void Restore(MeasureDescriptor descriptor, IReadOnlyList<ResolvedTarget> targets, IRegistryKeyFactory registry, SavedStateStore store);`
   - `public interface IVersionResolver { IReadOnlyList<string> ResolveOfficeVersions(); IReadOnlyList<string> ResolveAdobeVersions(); }` — `VersionedPathHandler` codes against this so version discovery is testable and swappable; Task 7 supplies the real one.
   - Test helper, created in `tests/Palisade.Core.Tests/StubVersionResolver.cs` by this task because Task 6's tests need it: `public sealed class StubVersionResolver(IReadOnlyList<string>? officeVersions = null, IReadOnlyList<string>? adobeVersions = null) : IVersionResolver` — the parameterless call returns empty lists, which is what the `RegistryDword` tests want since those measures are not versioned.
 
@@ -702,7 +784,7 @@ Expected: build failure — handlers do not exist.
 
 - [ ] **Step 3: Implement `IMechanismHandler` and the three registry-value handlers**
 
-`RegistryDwordHandler.Mechanism` is `Mechanism.RegistryDword`. `Apply` on a `REG_DWORD` target: read the current value; if the key is absent or the value is absent, call `store.SaveNotExisting`; else call `store.SaveDword` with the current value; then `SetDword(descriptor's hardened value)`. The hardened value comes from the descriptor's mechanism-specific payload, so add to `MeasureDescriptor` a `IReadOnlyDictionary<string, string> Settings` carrying the hardened value, the multi-value name, and the Office/Adobe version and app lists. Name it explicitly in the descriptor; do not hide it in a side dictionary keyed by a string the plan has not fixed.
+`RegistryDwordHandler.Mechanism` is `Mechanism.RegistryDword`. `ResolveTargets` maps each `descriptor.Targets` entry to a `ResolvedTarget` one-for-one, carrying `Kind` and `HardenedValue` across — a `RegistryDword` measure with three declared targets resolves to three, and the handler iterates all of them. `Apply` on a `REG_DWORD` target: read the current value; if the key is absent or the value is absent, call `store.SaveNotExisting`; else call `store.SaveDword` with the current value; then `SetDword(target.HardenedValue)`. The hardened value comes from `MeasureTarget.HardenedValue`, **not** from `descriptor.Settings` — the hardened-value payload moved to the typed `Targets` list in Task 2 and a handler that reads it from `Settings` would find nothing.
 
 `Restore` on a `REG_DWORD` target: look up the saved entry by root/key/value. `Dword` → `SetDword` the saved value. `NotExisting` → `DeleteValue`. `LegacyDword` → `SetDword` the legacy value. No saved entry → do nothing, and record nothing. **Never** write a legacy-format name.
 
@@ -781,10 +863,10 @@ git commit -m "feat: registry, string, DisallowRun and file-association mechanis
 - Test: `tests/Palisade.Core.Tests/Mechanisms/VersionedPathTests.cs`
 
 **Interfaces:**
-- Consumes: `IMechanismHandler`, `IVersionResolver`, `SavedStateStore`, `MeasureDescriptor.Settings` (Task 6).
+- Consumes: `IMechanismHandler`, `IVersionResolver`, `SavedStateStore`, `MeasureDescriptor.Settings` and `MeasureDescriptor.Targets` (Task 2, Task 6).
 - Produces:
   - `public sealed class InstalledVersionResolver(IRegistryKeyFactory registry) : IVersionResolver` — enumerates installed Office and Adobe version directories under `%ProgramFiles%` and `%ProgramFiles(x86)%` and returns only the versions actually present. Returns an empty list when the directory is absent, which the handler reports as a failure rather than a silent success.
-  - `public sealed record PathResolutionResult(IReadOnlyList<MechanismTarget> Targets, IReadOnlyList<string> Failures);`
+  - `public sealed record PathResolutionResult(IReadOnlyList<ResolvedTarget> Targets, IReadOnlyList<string> Failures);`
   - `public sealed class VersionedPathHandler { public PathResolutionResult Resolve(MeasureDescriptor descriptor, IVersionResolver versions); }` plus the three `IMechanismHandler` members, where `Detect`/`Apply`/`Restore` operate on `Resolve(...).Targets` and a non-empty `Failures` list makes `Detect` return `Unavailable`.
 
 - [ ] **Step 1: Write the failing versioned-path tests**
@@ -832,7 +914,7 @@ The authoritative table, transcribed from the Go source, giving for each version
 
 - [ ] **Step 4: Implement `VersionedPathHandler` and `InstalledVersionResolver`**
 
-`Resolve` reads the template, version list, and app list from `descriptor.Settings`, enumerates the cross product, and returns one `MechanismTarget` per combination. It does **not** check whether the resulting registry key exists — that is `Detect`'s job, and conflating the two is what makes the Go tool report success on a machine with a version it does not know.
+`Resolve` reads the template, version list, and app list from `descriptor.Settings`, enumerates the cross product, and returns one `ResolvedTarget` per combination. It does **not** check whether the resulting registry key exists — that is `Detect`'s job, and conflating the two is what makes the Go tool report success on a machine with a version it does not know.
 
 `InstalledVersionResolver` enumerates directory names under the Office and Adobe install roots, matching the shape the templates expect, and returns the distinct version tokens found.
 
