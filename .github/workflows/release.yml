@@ -1,0 +1,149 @@
+# Palisade release pipeline.
+#
+# Trigger by pushing a version tag:
+#   git tag v0.2.1
+#   git push origin v0.2.1
+#
+# The pipeline runs the full test suite, publishes a self-contained
+# single-folder Windows build (app + CLI), zips it and attaches it to a
+# GitHub Release with auto-generated notes. A tag can also be created from
+# the Actions tab via "Run workflow".
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # ---------- 1. Full test suite ----------
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build
+        run: dotnet build Palisade.slnx -c Release
+
+      - name: Test
+        run: dotnet test Palisade.slnx -c Release --no-build --logger "console;verbosity=normal"
+
+  # ---------- 2. Publish + GitHub Release ----------
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Derive version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "building version $version"
+
+      # ---------- GUI (self-contained, single folder) ----------
+      - name: Publish Palisade.App
+        shell: pwsh
+        run: |
+          dotnet publish src/Palisade.App/Palisade.App.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishReadyToRun=true `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o release/Palisade
+
+      # ---------- CLI (self-contained, nested for PATH-free use) ----------
+      - name: Publish Palisade.Cli
+        shell: pwsh
+        run: |
+          dotnet publish src/Palisade.Cli/Palisade.Cli.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishReadyToRun=true `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o release/Palisade/cli
+
+      # ---------- Docs + archive ----------
+      - name: Stage release content
+        shell: pwsh
+        run: |
+          Copy-Item LICENSE.txt release/Palisade/LICENSE.txt
+          $readme = @"
+          PALISADE - reversible hardening (not an antivirus)
+          ==================================================
+
+          Start:  Palisade.exe
+
+          Command line (run "cli\Palisade.Cli.exe -h" for details):
+            -harden    restore, then apply the default hardening set
+            -restore   undo every recorded change on this account
+            -detect    show the current state of all 26 measures
+            -policies  list configured group policy overrides
+
+          Palisade reduces the Windows attack surface by disabling features
+          that are useless to regular users but are routinely abused to
+          execute malicious code, and adds RyTuneX's tuning, policy scanner,
+          startup manager, debloat and repair facilities.
+
+          Every hardening change is recorded so it can be reverted exactly.
+          Changes are scoped to the account that ran the tool.
+
+          Palisade is NOT an antivirus. It does not identify, block or
+          remove malware. It reduces the attack surface; nothing more.
+
+          A restart is required for the full effect of several measures.
+
+          License: GPLv3. Port of hardentools (Security Without Borders);
+          tuning facilities ported from RyTuneX. See LICENSE.txt.
+          "@
+          Set-Content -Path release/Palisade/README.txt -Value $readme -Encoding UTF8
+
+      - name: Create archive
+        id: archive
+        shell: pwsh
+        run: |
+          $zip = "Palisade-${{ steps.version.outputs.version }}-win-x64.zip"
+          Compress-Archive -Path release/Palisade/* -DestinationPath $zip -Force
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$env:GITHUB_REF_NAME" `
+            "${{ steps.archive.outputs.zip }}" `
+            --title "Palisade ${{ steps.version.outputs.version }}" `
+            --generate-notes `
+            --latest
+
+      - name: Upload artifact (always retrievable from Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Palisade-${{ steps.version.outputs.version }}-win-x64
+          path: release/Palisade/
+          retention-days: 14
