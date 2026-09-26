@@ -151,12 +151,13 @@ git commit -m "chore: scaffold Palisade.Core and test project"
   - `public static class RootKeyNames { public static string ToToken(RegistryRoot root); public static bool TryParse(string token, out RegistryRoot root); }` — `ToToken` returns the six exact tokens in Global Constraints; `TryParse` returns `false` for any other string.
   - `public sealed record AvailabilityRule(string Kind, IReadOnlyDictionary<string, string> Arguments, string Reason);`
   - `public sealed record MeasureConstraint(MeasureId Target, string Reason);`
-  - `public sealed record MeasureTarget(RegistryRoot Root, string Path, string ValueName, string Kind, string HardenedValue);` — one registry value a measure writes. `Kind` is exactly one of `"Dword"`, `"String"`, `"MultiString"`, and drives the actual read/write, so a measure that writes both an `REG_SZ` and an `REG_DWORD` needs no bespoke encoding. `HardenedValue` is the string form of the hardened value; for `"Dword"` it is the decimal digits.
+  - `public sealed record MeasureTarget(RegistryRoot Root, string Path, string ValueName, string Kind, string HardenedValue, string? AppFilter = null, string? VersionFilter = null);` — one registry value a measure writes. `Kind` is exactly one of `"Dword"`, `"String"`, `"MultiString"`, and drives the actual read/write, so a measure that writes both an `REG_SZ` and an `REG_DWORD` needs no bespoke encoding. `HardenedValue` is the string form of the hardened value; for `"Dword"` it is the decimal digits, and it **may be empty** — `SecureURL\Value` hardens to `""` (`libreoffice.go:48`). `Path` may contain `%s`, the placeholder for the product version.
+  - `AppFilter` and `VersionFilter` are per-target allowlists (comma-separated; `null` means no narrowing, i.e. every discovered product). They exist because upstream scopes individual sub-values to specific products: `office.go` writes `AllowDDE` for **Word only, versions 14–16**, and `WorkbookLinkWarnings` for **Excel only, 12–16**. With narrowing only on the descriptor, Task 6 would apply the union of all version and app lists to every sub-value and write **17 registry values where upstream writes 32** — setting DDE keys on products the Go tool deliberately leaves alone. A `null` filter reproduces the un-narrowed majority; a non-null filter reproduces the exception.
   - `public sealed record MeasureDescriptor(MeasureId Id, string Name, string LongName, string Consequence, Mechanism Mechanism, bool RequiresElevation, bool HardenByDefault, MeasureGroup Group, IReadOnlyDictionary<string, string> Settings, IReadOnlyList<MeasureTarget> Targets, IReadOnlyList<MeasureConstraint> ConstrainedBy, IReadOnlyList<AvailabilityRule> Availability);`
 
   **`Targets` is the registry payload** and is what makes a descriptor self-contained data rather than a type per measure. It is non-empty for `RegistryDword`, `RegistryString` and `VersionedPath` measures, and empty for `DisallowRun`, `FileAssociation` and `NonRegistry`. `Mechanism` stays the descriptor's classification (used for restore ordering, UI grouping, and the validation test below); `Target.Kind` is what a handler actually dispatches on, which is why a `RegistryString` measure may legitimately carry one `"Dword"` target — LibreOffice writes `REG_SZ "Value"` and `REG_DWORD "Final"` at the same policy path (`libreoffice.go:39` and `libreoffice.go:57`).
 
-  **`Settings` holds only the non-registry-family parameters.** Reserved keys, all string-typed: `"PathTemplate"` (the versioned-path template), `"OfficeVersions"`, `"AdobeVersions"`, `"Apps"` (comma-separated; a multi-value measure sets a target whose `ValueName` is the executable name and omits the rest). The previously listed `"HardenedValue"`, `"MultiValueName"` and bare `"ValueName"` keys are **removed** — that payload now lives in `Targets`, and keeping both spellings of the same fact is how the two drift apart.
+  **`Settings` holds only the version and app lists used for expansion.** Reserved keys, all string-typed: `"OfficeVersions"`, `"AdobeVersions"`, `"Apps"` (comma-separated). These are the *universe* of products to discover; a target's `AppFilter`/`VersionFilter` narrows it. The previously listed `"PathTemplate"` key is **removed** — a template belongs on the target that uses it, so DDE's per-sub-value `%s` paths and the versioned-path measures share one expansion path instead of two. The previously listed `"HardenedValue"`, `"MultiValueName"` and bare `"ValueName"` keys are likewise **removed**; that payload lives in `Targets`, and keeping two spellings of the same fact is how they drift apart.
   - `public readonly record struct MeasureId(string Value);` with `public override string ToString() => Value;` and `public static implicit operator string(MeasureId id) => id.Value;` — the implicit operator exists so the saved-state feature names read cleanly, e.g. `saveHardenState(MeasureId.From("recall"), "disabled")`.
   - `public static class MeasureCatalog { public static IReadOnlyList<MeasureDescriptor> All { get; } public static MeasureDescriptor Get(MeasureId id); public static IReadOnlyList<MeasureDescriptor> InGroup(MeasureGroup group); }`
 
@@ -248,9 +249,14 @@ public class MeasureCatalogTests
         // ruled out encoding targets inside a settings string.
         var macro = MeasureCatalog.All.Single(m => m.Group == MeasureGroup.LibreOffice
             && m.Targets.Any(t => t.Path.Contains("MacroSecurityLevel", StringComparison.Ordinal)));
-        var secureUrl = Assert.Single(macro.Targets.Where(t => t.Path.Contains("SecureURL", StringComparison.Ordinal)));
+        // Two targets sit under the SecureURL path (SZ "Value" and DWORD "Final"), so filter
+        // on the value name rather than asserting the path is unique.
+        var secureUrl = Assert.Single(macro.Targets.Where(t =>
+            t.Path.Contains("SecureURL", StringComparison.Ordinal) && t.ValueName == "Value"));
         Assert.Equal("String", secureUrl.Kind);
         Assert.Equal(string.Empty, secureUrl.HardenedValue);
+        Assert.Equal("0", Assert.Single(macro.Targets.Where(t =>
+            t.Path.Contains("SecureURL", StringComparison.Ordinal) && t.ValueName == "Final")).HardenedValue);
     }
 
     [Fact]
@@ -309,6 +315,33 @@ public class MeasureCatalogTests
     }
 
     [Fact]
+    public void Narrowed_targets_declare_their_app_and_version_scope()
+    {
+        // Guards against the widening failure: if every DDE sub-value inherited the
+        // descriptor's full version and app lists, Task 6 would write 32 registry values
+        // where the Go tool writes 17, setting DDE keys on products upstream leaves alone.
+        var narrowed = MeasureCatalog.All.SelectMany(m => m.Targets)
+            .Where(t => t.AppFilter is not null || t.VersionFilter is not null).ToList();
+        Assert.NotEmpty(narrowed);
+        Assert.All(narrowed, t =>
+        {
+            Assert.NotNull(t.Path);
+            Assert.False(string.IsNullOrWhiteSpace(t.AppFilter ?? t.VersionFilter));
+        });
+    }
+
+    [Fact]
+    public void Only_the_DDE_measure_narrows_its_targets()
+    {
+        // Versioned-path and LibreOffice measures apply to every discovered product upstream,
+        // so a filter on them would itself be a divergence.
+        var narrowing = MeasureCatalog.All
+            .Where(m => m.Targets.Any(t => t.AppFilter is not null || t.VersionFilter is not null))
+            .Select(m => m.Id.Value).ToList();
+        Assert.Single(narrowing);
+    }
+
+    [Fact]
     public void Every_measure_has_a_non_empty_consequence_sentence() =>
         Assert.All(MeasureCatalog.All, m => Assert.False(string.IsNullOrWhiteSpace(m.Consequence)));
 
@@ -336,7 +369,7 @@ One file per type, matching the File Structure table. `ToToken`/`TryParse` cover
 
 - [ ] **Step 4: Implement the 26 descriptors in `MeasureCatalog.cs`**
 
-Each descriptor is one static `readonly` field. Populate `Targets` from the Go source — **this is the step the plan originally got wrong, so read the Go file for every measure rather than assuming one value.** The four `RegistryMultiValue` measures (`show_file_extensions.go`, `autorun.go`, `uac.go`, `defender_pua.go`) get three targets each. The five LibreOffice measures get **two or four** targets each, not a flat two: `HyperlinksWithCtrlClick` and `BlockUntrustedRefererLinks` are single sub-measures (2 each), while `MacroSecurity` (`MacroSecurityLevel` + `SecureURL`, `libreoffice.go:34-70`), `EnforceUpdateChecks` (`AutoCheckEnabled` + `CheckInterval`, `:164-200`) and `DisableUpdateLinks` (`Calc\Content\Update\Link` + `Writer\Content\Update\Link`, `:216-252`) are bundles of two sub-measures and get 4 each. Every LibreOffice sub-measure pairs an `REG_SZ "Value"` with an `REG_DWORD "Final"`, and `SecureURL\Value` hardens to the **empty string** (`:48`) — a blank `HardenedValue` is legitimate, not a missing one. `office.go`'s DDE measure gets a target per sub-value. `Kind` is `"Dword"`, `"String"` or `"MultiString"` and drives the write. `Settings` carries only `"PathTemplate"`, `"OfficeVersions"`, `"AdobeVersions"` and `"Apps"`. `DisallowRun`, `FileAssociation` and `NonRegistry` measures have an empty `Targets` list.
+Each descriptor is one static `readonly` field. Populate `Targets` from the Go source — **this is the step the plan originally got wrong, so read the Go file for every measure rather than assuming one value.** The four `RegistryMultiValue` measures (`show_file_extensions.go`, `autorun.go`, `uac.go`, `defender_pua.go`) get three targets each. The five LibreOffice measures get **two or four** targets each, not a flat two: `HyperlinksWithCtrlClick` and `BlockUntrustedRefererLinks` are single sub-measures (2 each), while `MacroSecurity` (`MacroSecurityLevel` + `SecureURL`, `libreoffice.go:34-70`), `EnforceUpdateChecks` (`AutoCheckEnabled` + `CheckInterval`, `:164-200`) and `DisableUpdateLinks` (`Calc\Content\Update\Link` + `Writer\Content\Update\Link`, `:216-252`) are bundles of two sub-measures and get 4 each. Every LibreOffice sub-measure pairs an `REG_SZ "Value"` with an `REG_DWORD "Final"`, and `SecureURL\Value` hardens to the **empty string** (`:48`) — a blank `HardenedValue` is legitimate, not a missing one. `office.go`'s DDE measure gets a target per sub-value, and the narrow ones carry `AppFilter`/`VersionFilter` — `AllowDDE` is Word-only on 14–16, `WorkbookLinkWarnings` Excel-only on 12–16. `Kind` is `"Dword"`, `"String"` or `"MultiString"` and drives the write. `Settings` carries only `"OfficeVersions"`, `"AdobeVersions"` and `"Apps"`. `DisallowRun`, `FileAssociation` and `NonRegistry` measures have an empty `Targets` list.
 
 Each descriptor is one static `readonly` field. The `Consequence` string is the display-size sentence naming what breaks in the user's own applications — for example `Cmd`'s is "You will not be able to open the Windows command prompt (cmd.exe) any more.", and `OfficeMacros`' is "Macros will not run in Excel, PowerPoint, or Word. Documents that rely on macros will not work."
 
@@ -956,7 +989,7 @@ The authoritative table, transcribed from the Go source, giving for each version
 
 - [ ] **Step 4: Implement `VersionedPathHandler` and `InstalledVersionResolver`**
 
-`Resolve` reads the template, version list, and app list from `descriptor.Settings`, enumerates the cross product, and returns one `ResolvedTarget` per combination. It does **not** check whether the resulting registry key exists — that is `Detect`'s job, and conflating the two is what makes the Go tool report success on a machine with a version it does not know.
+`Resolve` reads each target's `Path` (which carries the `%s` placeholder) from `descriptor.Targets`, and the product universe from `descriptor.Settings["OfficeVersions"]` / `["Apps"]` / `["AdobeVersions"]`. It then narrows per target: a target with a non-null `AppFilter` or `VersionFilter` expands only over the intersection of the universe and that filter; a target with both null expands over the whole universe. One `ResolvedTarget` is returned per surviving (app, version) pair, with `%s` substituted. This is a single expansion path shared by the versioned-path measures and by DDE's per-sub-value `%s` paths — `office.go`'s `fNoCalclinksOnopen_90_1` is the one DDE path with no `%s`, and it is unaffected because there is nothing to substitute. It does **not** check whether the resulting registry key exists — that is `Detect`'s job, and conflating the two is what makes the Go tool report success on a machine with a version it does not know.
 
 `InstalledVersionResolver` enumerates directory names under the Office and Adobe install roots, matching the shape the templates expect, and returns the distinct version tokens found.
 
