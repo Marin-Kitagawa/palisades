@@ -561,15 +561,24 @@ git commit -m "feat: registry abstraction and in-memory hive"
     - `public const string LegacyPrefix = "SavedState_";`
     - `public const string Separator = "____";`
     - `public const string LegacySeparator = "_";`
-    - `public static string Format(RegistryRoot root, string keyPath, string valueName)`
-    - `public static string FormatNotExisting(RegistryRoot root, string keyPath, string valueName)`
+    - `public static string Format(RegistryRoot root, string keyPath, string valueName)` — the `SavedStateNew_` form (`registry_utils.go:378`)
+    - `public static string FormatString(RegistryRoot root, string keyPath, string valueName)` — the `SavedStateNewSZ_` form (`registry_utils.go:432`). **All three `Format` methods are required**: without this one Task 5's `SaveString` has nothing to call and the string half of the saved-state format is unreachable.
+    - `public static string FormatNotExisting(RegistryRoot root, string keyPath, string valueName)` — the `SavedStateNotExisting_` form (`registry_utils.go:388`, `:442`)
     - `public static bool TryParse(string valueName, out SavedStateKind kind, out RegistryRoot root, out string keyPath, out string targetValueName, out string? warning)`
     - `public static string FormatNonReg(MeasureId feature)`
     - `public static bool TryParseNonReg(string valueName, out MeasureId feature)`
-  - `public enum SavedStateKind { Dword, String, NotExisting, LegacyDword, LegacyString }`
+  - `public enum SavedStateKind { Dword, String, NotExisting, LegacyDword, LegacyString }` — **`LegacyString` is currently unreachable and is not a typo.** Go only ever *writes* `SavedStateNew_`, `SavedStateNewSZ_` and `SavedStateNotExisting_`; the bare `SavedState_` form is read-only legacy and is read as an integer (`registry_utils.go:469`, `:503`), so no legacy string entry can exist. The member is kept so a future legacy-string format does not silently fall into `LegacyDword`, and a `switch` over `SavedStateKind` should still handle it explicitly rather than relying on the default arm.
   - `public readonly record struct SavedStateEntry(SavedStateKind Kind, RegistryRoot Root, string KeyPath, string ValueName, string? Warning);`
 
-**The parse contract, which is the whole point of this task:** the four-underscore form is unambiguous, so `TryParse` splits the root token at the **first** `\` and the remainder at the **first** `____`. The legacy single-underscore form is genuinely ambiguous, because `_` is legal inside a key path, so `TryParse` resolves it by matching the longest known root token followed by `\` at the head of the remainder, then treats **everything after the next `_`** as the value name and the middle as the key path. If no root token matches at the head, the entry is unresolvable: `TryParse` returns `true` with `Warning` set to a sentence naming the value, so the caller can report it — and `Root` is then meaningless, which is why the caller must check `Warning` before using the entry.
+**The parse contract:** the root token is the text up to the **first** `\` (a root token never contains a backslash), and the value name is everything after the **last** separator — the last `____` in the four-underscore forms, the last `_` in the legacy form. **The separator must be matched at its last occurrence, not its first.** Go does exactly this: `registry_utils.go:509` and `:536` both use `strings.LastIndex`, never `Index`. The plan originally specified *first*, which is wrong: for `SavedStateNew_CURRENT_USER\Software\My____Key____V` a first-match split yields key path `Software\My` and value `Key____V`, where last-match yields `Software\My____Key` and `V`.
+
+**How load-bearing is this, honestly:** for the four-underscore forms it is currently **defensive rather than load-bearing**. Auditing every `Path`/`ValueName`/`PathRegEx` literal in the Go tree plus the substituted version and app tokens: **no key path contains an underscore, and no value name contains `____`**, so on every name Go can actually write, first-match and last-match agree. Exactly one value name carries single underscores — `fNoCalclinksOnopen_90_1` (`office.go:289`) — and that affects only the read-only legacy form, where Go mis-splits it and so must we. The rule is still last-match: it is correct, it is what Go does, and it becomes load-bearing the moment a key path or value name with an underscore reaches the format. Do not "simplify" it to first-match, and do not write a comment claiming it fixes a bug that is currently reachable — it does not.
+
+**Malformed names, which Go handles badly.** When the remainder contains no `____`, Go's `regKey[LastIndex(...)+4:]` becomes `regKey[3:]`, so `SavedStateNew_CURRENT_USER\Software` yields key `Software` and the plausible-looking wrong value `tware`, which Go then writes. A zero-length remainder makes Go panic (`""[3:]`). Neither is reachable from Go's four write sites. **Palisade returns a `Warning` with an empty key path and value name instead of reproducing either.**
+
+**The legacy single-underscore form is genuinely ambiguous**, because `_` is legal inside a key path. `TryParse` resolves it by taking the root token as the text up to the first `\`, then splitting the remainder at its **last** `_`. So `SavedState_CURRENT_USER\Software\My_Foo_Bar` is remainder `Software\My_Foo_Bar`, last `_` precedes `Bar`, giving key path `Software\My_Foo` and value `Bar`. A legacy name whose *value* contains an underscore is therefore mis-split — exactly as Go mis-splits it. Faithful reproduction is the requirement; do not try to be cleverer than `LastIndex` here.
+
+If no root token matches at the head, the entry is unresolvable: `TryParse` returns `true` with `Warning` set to a sentence naming the value, so the caller can report it — and `Root` is then meaningless, which is why the caller must check `Warning` before using the entry. **Deliberate divergence:** Go resolves the root via `getRootKeyFromName` and, on failure, silently skips the entry with only a log line (`registry_utils.go:517-519`). Palisade surfaces it as a `Warning` instead. That is a deliberate improvement — a silently unrestorable entry is a support problem — and it changes no byte on disk.
 
 - [ ] **Step 1: Write the failing parse tests**
 
@@ -605,6 +614,29 @@ public void Parses_a_value_name_that_contains_a_backslash() // Review Focus #1
 }
 
 [Fact]
+public void Splits_on_the_last_separator_not_the_first() // Review Focus #1
+{
+    // The separator appears in the key path *and* again before the value. Splitting at the
+    // first `____` yields "Software\My" + "Key____V" and restores to the wrong key while
+    // reporting no error at all. Go uses strings.LastIndex (registry_utils.go:536).
+    Assert.True(RegistryKeyNames.TryParse(
+        @"SavedStateNew_CURRENT_USER\Software\My____Key____V",
+        out _, out _, out var keyPath, out var valueName, out _));
+    Assert.Equal(@"Software\My____Key", keyPath);
+    Assert.Equal("V", valueName);
+}
+
+[Fact]
+public void Round_trips_a_key_path_containing_the_separator()
+{
+    const string keyPath = @"Software\My____Key";
+    var formatted = RegistryKeyNames.Format(RegistryRoot.CurrentUser, keyPath, "V");
+    Assert.True(RegistryKeyNames.TryParse(formatted, out _, out _, out var parsedPath, out var parsedValue, out _));
+    Assert.Equal(keyPath, parsedPath);
+    Assert.Equal("V", parsedValue);
+}
+
+[Fact]
 public void Parses_a_legacy_name_with_single_underscore() // Review Focus #2
 {
     Assert.True(RegistryKeyNames.TryParse(
@@ -617,8 +649,22 @@ public void Parses_a_legacy_name_with_single_underscore() // Review Focus #2
 }
 
 [Fact]
-public void Reports_a_legacy_name_whose_key_path_contains_underscores() // Review Focus #2
+public void Splits_a_legacy_name_on_the_last_underscore() // Review Focus #2
 {
+    // Discriminating case. `Software\My_Foo_Bar` has a single underscore in the remainder,
+    // so first-match and last-match agree and the test proves nothing. This one does not:
+    // Go takes strings.LastIndex (registry_utils.go:509) and so must we.
+    Assert.True(RegistryKeyNames.TryParse(
+        @"SavedState_CURRENT_USER\Software\My_Foo_Bar_Baz",
+        out _, out _, out var keyPath, out var valueName, out _));
+    Assert.Equal(@"Software\My_Foo_Bar", keyPath);
+    Assert.Equal("Baz", valueName);
+}
+
+[Fact]
+public void Legacy_names_with_a_key_path_containing_underscores_resolve_the_way_go_resolves_them()
+{
+    // Go mis-splits this too, and that is the point: faithfulness, not correctness.
     Assert.True(RegistryKeyNames.TryParse(
         @"SavedState_CURRENT_USER\Software\My_Foo_Bar",
         out _, out _, out var keyPath, out var valueName, out _));
@@ -649,10 +695,31 @@ public void Non_registry_names_round_trip()
 [Fact]
 public void Non_registry_names_match_the_go_tools_spelling_exactly()
 {
-    // Guards the byte-compat surface: a capitalised id would round-trip fine but would not
-    // find the Go tool's `SavedStateNonReg_recall`.
+    // Guards the byte-compat surface. The parser deliberately does NOT validate the feature
+    // id against a closed set — that would refuse a future Go feature's saved state at
+    // restore. What matters is that a capitalised id round-trips to a *different* id, so
+    // Task 5's exact-name lookup misses the Go tool's `SavedStateNonReg_recall` instead of
+    // silently matching it.
     Assert.Equal("SavedStateNonReg_recall", RegistryKeyNames.FormatNonReg(new MeasureId("recall")));
-    Assert.False(RegistryKeyNames.TryParseNonReg("SavedStateNonReg_Recall", out _));
+    Assert.True(RegistryKeyNames.TryParseNonReg("SavedStateNonReg_Recall", out var capitalised));
+    Assert.Equal("Recall", capitalised.Value);
+    Assert.NotEqual(new MeasureId("recall"), capitalised);
+}
+
+[Fact]
+public void Non_registry_names_round_trip_for_an_arbitrary_feature()
+{
+    // Asymmetric format/parse pairs are how a future Go feature becomes unrestorable.
+    var name = RegistryKeyNames.FormatNonReg(new MeasureId("SomethingNew"));
+    Assert.True(RegistryKeyNames.TryParseNonReg(name, out var feature));
+    Assert.Equal("SomethingNew", feature.Value);
+}
+
+[Fact]
+public void Non_registry_parse_rejects_a_bad_prefix_or_an_empty_feature()
+{
+    Assert.False(RegistryKeyNames.TryParseNonReg("SavedStateNew_recall", out _));
+    Assert.False(RegistryKeyNames.TryParseNonReg("SavedStateNonReg_", out _));
 }
 ```
 
@@ -665,9 +732,11 @@ Expected: build failure — `RegistryKeyNames` does not exist.
 
 `Format` and `FormatNotExisting` are pure string composition. `TryParse` dispatches on the longest matching prefix first — check `NewStringPrefix` before `NewDwordPrefix` before `NotExistingPrefix` before `LegacyPrefix`, because `SavedStateNewSZ_` and `SavedStateNew_` are both prefixes-adjacent and a naive `StartsWith` on the shorter one would mis-slice the longer.
 
-For the legacy branch, take `remainder` after the prefix; find the root token by testing all six tokens for a match at position 0 followed by `\`; strip it and the `\`; then find the **first** `_` in what is left and split there. Everything after is the value name. If no root token matches, set `Warning` and return `true`.
+For the legacy branch, take `remainder` after the prefix; the root token is `remainder` up to its first `\`; strip it and the `\`; then find the **last** `_` in what is left and split there. Everything after is the value name. If the remainder has no `\`, or the root token is not one of the six, set `Warning` and return `true`. The four-underscore branches are identical except that they match the **last** `____` and trim that suffix.
 
-`TryParseNonReg` returns `false` for anything not starting with `NonRegPrefix` or with an empty feature name after it.
+**Use `LastIndexOf`/`LastIndex`, never `IndexOf`/`Index`.** This is not a style preference — it is the difference between reading a foreign tool's saved state correctly and silently restoring to the wrong key. If you find yourself reaching for `IndexOf`, stop and re-read Go's `registry_utils.go:509` and `:536`.
+
+`TryParseNonReg` returns `false` for anything not starting with `NonRegPrefix` or with an empty feature name after it, and **nothing else**. It does **not** validate the feature id against a known set: `FormatNonReg` accepts any `MeasureId`, so a whitelist would make the pair asymmetric (format an arbitrary id, then refuse to parse it), and a future Go release writing `SavedStateNonReg_<newfeature>` would have its saved state **refused at restore** — the exact failure class this project exists to prevent. Case fidelity is enforced at the *write* (the literal `recall`) and at the *lookup* (Task 5's exact-name registry read with `StringComparison.Ordinal`), not here.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -756,7 +825,7 @@ public void Reports_a_malformed_entry_rather_than_dropping_it_silently()
     var registry = new InMemoryRegistry();
     using (var key = registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, true)!)
     {
-        key.SetDword("SavedStateNew_NOPE\Software\Foo____Bar", 1);
+        key.SetDword(@"SavedStateNew_NOPE\Software\Foo____Bar", 1);
     }
     var store = new SavedStateStore(registry, RegistryOptions.Default);
     var entry = Assert.Single(store.ReadAll());
@@ -1402,7 +1471,7 @@ public void Report_carries_a_warning_for_every_malformed_saved_entry() // spec d
     var registry = new InMemoryRegistry();
     using (var key = registry.OpenKey(RegistryRoot.CurrentUser, RegistryOptions.DefaultSavedStateKeyPath, true)!)
     {
-        key.SetDword("SavedStateNew_NOPE\Software\Foo____Bar", 1);
+        key.SetDword(@"SavedStateNew_NOPE\Software\Foo____Bar", 1);
     }
     var engine = new PalisadeEngine(registry, RegistryOptions.Default, new AppPaths("."), () => true);
     var report = engine.RestoreAll();

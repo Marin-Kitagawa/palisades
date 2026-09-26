@@ -59,7 +59,7 @@ The original project is explicit about what it is not, and that honesty is the p
 - Deliberate bug fixes over bug-for-bug reproduction: file-association `IsHardened` was broken; `DisallowRun` handle lifetime was unsafe; ASR state restoration was inexact; restore ordering was not deterministic; legacy saved-state parsing was unguarded; `markStatus` errors were silently swallowed; the Go tool called `os.Exit` after operations; label text did not wrap.
 - Office/Adobe version patterns must be expanded into concrete descriptors before being applied, not passed through as wildcards.
 
-**Confirmed out of scope for this milestone, required later:** the RyTuneX feature set — approximately 185 tuning toggles, 7 system modules, a policy scanner, and a repair facility — arrives as separate sub-projects after the core plus 26 measures ship. Palisade's name and architecture are chosen to hold that future scope without redesign.
+**Scope expansion (user decision, 2026-09-26):** the RyTuneX feature set — approximately 185 tuning toggles, 7 system modules, a policy scanner, and a repair facility — now ships **in this app** rather than as later sub-projects. It arrives as the `Palisade.Tuning` port (logic only, no WinUI), surfaced as separate navigation pages against the same visual world. The 26 hardening measures remain the core; the hardening state engine keeps its byte-compatibility contract, and the tuning modules are held to the same reversibility discipline where the upstream RyTuneX records original values.
 
 ## Brand Commitments
 
